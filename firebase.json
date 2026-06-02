@@ -1,0 +1,55 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "scorecards-app",
+          "appId": "1:589112385745:android:dec76222f8603c7aafa5f0",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "scorecards-app",
+          "appId": "1:589112385745:ios:154260d7da1efc49afa5f0",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "macos": {
+        "default": {
+          "projectId": "scorecards-app",
+          "appId": "1:589112385745:ios:154260d7da1efc49afa5f0",
+          "uploadDebugSymbols": false,
+          "fileOutput": "macos/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "scorecards-app",
+          "configurations": {
+            "android": "1:589112385745:android:dec76222f8603c7aafa5f0",
+            "ios": "1:589112385745:ios:154260d7da1efc49afa5f0",
+            "macos": "1:589112385745:ios:154260d7da1efc49afa5f0",
+            "web": "1:589112385745:web:0de4fdd0f45a9ff5afa5f0",
+            "windows": "1:589112385745:web:b0fe749c68ce3087afa5f0"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
+}
