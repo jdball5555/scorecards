@@ -47,3 +47,17 @@ app.*.map.json
 # Firebase
 google-services.json
 GoogleService-Info.plist
+# Firebase deploy cache
+.firebase/
+
+# AI coding-tool files
+.agents/
+skills-lock.json
+
+# Secrets — never commit these
+.env
+.env.*
+*service-account*.json
+*serviceAccount*.json
+*.pem
+*.key

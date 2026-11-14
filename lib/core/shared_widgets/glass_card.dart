@@ -1,29 +1,33 @@
 import 'dart:ui';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 class GlassCard extends StatelessWidget {
   final Widget child;
   final Color accentColor; // Allows us to make the rim blue, pink, etc.
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   const GlassCard({
     super.key,
     required this.child,
     this.accentColor = const Color(0xFF00A2FF), // Default to that electric blue
     this.onTap,
+    this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         // 1. The Neon Outer Glow
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: accentColor.withOpacity(0.3),
+              color: accentColor.withValues(alpha: 0.3),
               blurRadius: 20,
               spreadRadius: -2,
             ),
@@ -31,11 +35,9 @@ class GlassCard extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(24),
-          child: BackdropFilter(
-            // Lower blur makes the glass look "clearer" and less frosted
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: _maybeBlur(
             // 2. The 3D Gradient Rim
-            child: Container(
+            Container(
               padding: const EdgeInsets.all(
                 2.0,
               ), // The thickness of the glass edge
@@ -45,12 +47,14 @@ class GlassCard extends StatelessWidget {
                   end: Alignment.bottomRight,
                   stops: const [0.0, 0.15, 0.7, 1.0],
                   colors: [
-                    Colors.white.withOpacity(
-                      0.9,
+                    Colors.white.withValues(
+                      alpha: 0.9,
                     ), // Sharp white specular reflection on top left
-                    accentColor.withOpacity(0.8), // Bright neon rim
-                    accentColor.withOpacity(0.2), // Faded dark sides
-                    accentColor.withOpacity(0.6), // Bottom right edge catch
+                    accentColor.withValues(alpha: 0.8), // Bright neon rim
+                    accentColor.withValues(alpha: 0.2), // Faded dark sides
+                    accentColor.withValues(
+                      alpha: 0.6,
+                    ), // Bottom right edge catch
                   ],
                 ),
               ),
@@ -59,11 +63,11 @@ class GlassCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(22),
                   // Very dark center to match your reference image
-                  color: Colors.black.withOpacity(0.4),
+                  color: Colors.black.withValues(alpha: 0.4),
                   // Inner glow simulates the light bouncing inside the thick glass wall
                   boxShadow: [
                     BoxShadow(
-                      color: accentColor.withOpacity(0.15),
+                      color: accentColor.withValues(alpha: 0.15),
                       blurRadius: 20,
                       spreadRadius: 2,
                       blurStyle: BlurStyle.inner,
@@ -79,4 +83,13 @@ class GlassCard extends StatelessWidget {
       ),
     );
   }
+
+  /// See WhiteFrostTile: the live blur is skipped on the web for speed.
+  static Widget _maybeBlur(Widget child) => kIsWeb
+      ? child
+      : BackdropFilter(
+          // Lower blur makes the glass look "clearer" and less frosted
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: child,
+        );
 }

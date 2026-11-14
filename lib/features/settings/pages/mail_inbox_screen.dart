@@ -9,6 +9,9 @@ import '../../../core/shared_widgets/glass_card.dart';
 import '../../../core/shared_widgets/sleek_notification_banner.dart';
 import '../../../services/group_service.dart';
 import '../providers/mail_provider.dart';
+import '../../scorecards/providers/local_scorecard_provider.dart';
+import '../../scorecards/pages/scoring.dart';
+import 'package:scorecards_app/core/shared_widgets/top_bar_background.dart';
 
 class MailInboxScreen extends ConsumerWidget {
   MailInboxScreen({super.key});
@@ -110,6 +113,63 @@ class MailInboxScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _openScorecard(BuildContext context, String scorecardId) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: Color(0xFF00A2FF)),
+      ),
+    );
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('scorecards')
+          .doc(scorecardId)
+          .get();
+      if (context.mounted) {
+        Navigator.pop(context); // close loading
+      }
+
+      if (doc.exists && doc.data() != null) {
+        final card = LocalScorecard.fromMap(doc.data()!);
+        if (context.mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ScoringScreen(
+                gameType: card.gameType,
+                ownerType: card.ownerType,
+                ownerId: card.ownerId,
+                groupName: card.groupName,
+                existingCard: card,
+              ),
+            ),
+          );
+        }
+      } else {
+        if (context.mounted) {
+          SleekNotificationBanner.show(
+            "Scorecard Not Found",
+            "This scorecard may have been deleted.",
+            icon: Icons.error_outline,
+            color: Colors.redAccent,
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // close loading
+        SleekNotificationBanner.show(
+          "Error",
+          "Could not load scorecard: $e",
+          icon: Icons.error_outline,
+          color: Colors.redAccent,
+        );
+      }
+    }
+  }
+
   String _formatTime(dynamic timestamp) {
     if (timestamp == null) return '';
     if (timestamp is Timestamp) {
@@ -162,6 +222,8 @@ class MailInboxScreen extends ConsumerWidget {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
+          scrolledUnderElevation: 0,
+          flexibleSpace: const TopBarBackground(),
           title: const Text(
             'Mail Inbox',
             style: TextStyle(fontWeight: FontWeight.bold),
@@ -472,6 +534,38 @@ class MailInboxScreen extends ConsumerWidget {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
+                            if (type == 'new_scorecard' &&
+                                mail['scorecardId'] != null) ...[
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF00A2FF),
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                  onPressed: () {
+                                    _markAsRead(context, mail['id']);
+                                    _openScorecard(
+                                      context,
+                                      mail['scorecardId'],
+                                    );
+                                  },
+                                  icon: const Icon(Icons.analytics, size: 16),
+                                  label: const Text(
+                                    "View Scorecard",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -574,6 +668,28 @@ class MailInboxScreen extends ConsumerWidget {
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (type == 'new_scorecard' &&
+                      mail['scorecardId'] != null) ...[
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF00A2FF),
+                        ),
+                        onPressed: () =>
+                            _openScorecard(context, mail['scorecardId']),
+                        icon: const Icon(Icons.analytics, size: 16),
+                        label: const Text(
+                          "View Scorecard",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ),

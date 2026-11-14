@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/home/pages/home_screen.dart';
+import '../features/scorecards/pages/scorecards_screen.dart';
+import '../features/metrics/pages/metrics_screen.dart'; // NEW IMPORT
 import '../features/groups/pages/groups_screen.dart';
 import '../features/settings/pages/settings_screen.dart';
 import '../core/shared_widgets/gradient_background.dart';
+import '../core/layout/responsive.dart';
 import '../features/settings/providers/mail_provider.dart';
 
 final bottomNavIndexProvider = StateProvider<int>((ref) => 0);
@@ -25,43 +28,78 @@ class AppShell extends ConsumerWidget {
     final totalCount = actionCount + unreadCount;
     final hasAction = actionCount > 0;
 
-    final List<Widget> screens = const [
-      HomeScreen(),
-      GroupsScreen(),
-      SettingsScreen(),
+    // Lazily-built screens: only instantiated on first visit, then kept alive.
+    // This replaces IndexedStack which builds ALL screens simultaneously,
+    // causing OOM when combined with memory-heavy screens like ScoringScreen.
+    const List<Widget Function()> screenBuilders = [
+      HomeScreen.new,
+      ScorecardsScreen.new,
+      MetricsScreen.new,
+      GroupsScreen.new,
+      SettingsScreen.new,
     ];
+
+    final screens = ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
+      child: _LazyIndexedStack(
+        index: currentIndex,
+        screenBuilders: screenBuilders,
+      ),
+    );
+
+    void select(int index) =>
+        ref.read(bottomNavIndexProvider.notifier).state = index;
+
+    // --- Website layout: the sidebar (SiteChrome) handles navigation ---
+    if (SiteSidebarScope.isActive(context)) {
+      return GradientBackground(
+        child: Scaffold(backgroundColor: Colors.transparent, body: screens),
+      );
+    }
 
     return GradientBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
         extendBody: true,
-        body: IndexedStack(index: currentIndex, children: screens),
-        bottomNavigationBar: SafeArea(
-          child: ClipRRect(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.4),
-                  border: Border(
-                    top: BorderSide(
-                      color: Colors.white.withOpacity(0.1),
-                      width: 1,
-                    ),
+        body: screens,
+        bottomNavigationBar: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.4),
+                border: Border(
+                  top: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    width: 1,
                   ),
                 ),
+              ),
+              child: SafeArea(
                 child: BottomNavigationBar(
                   currentIndex: currentIndex,
+                  type: BottomNavigationBarType
+                      .fixed, // CRITICAL: Fixes the 4+ item bug
                   backgroundColor: Colors.transparent,
                   selectedItemColor: const Color(0xFF00A2FF),
+                  // Fits "Scorecards" on small phones (320pt wide).
+                  selectedFontSize: 12,
+                  unselectedFontSize: 11,
                   unselectedItemColor: Colors.white54,
                   elevation: 0,
-                  onTap: (index) =>
-                      ref.read(bottomNavIndexProvider.notifier).state = index,
+                  onTap: select,
                   items: [
                     const BottomNavigationBarItem(
                       icon: Icon(Icons.dashboard),
-                      label: 'Games',
+                      label: 'Home',
+                    ),
+                    const BottomNavigationBarItem(
+                      icon: Icon(Icons.style),
+                      label: 'Scorecards',
+                    ),
+                    const BottomNavigationBarItem(
+                      icon: Icon(Icons.bar_chart), // Icon for Metrics
+                      label: 'Metrics',
                     ),
                     const BottomNavigationBarItem(
                       icon: Icon(Icons.group),
@@ -70,7 +108,6 @@ class AppShell extends ConsumerWidget {
                     BottomNavigationBarItem(
                       icon: Badge(
                         isLabelVisible: totalCount > 0,
-                        // DYNAMIC COLOR: Blue if action needed, otherwise White
                         backgroundColor: hasAction
                             ? const Color(0xFF00A2FF)
                             : Colors.white,
@@ -87,6 +124,50 @@ class AppShell extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// Builds each screen lazily on first visit, then keeps it alive with Offstage.
+// Memory cost: only screens that have been visited are in the widget tree.
+class _LazyIndexedStack extends StatefulWidget {
+  final int index;
+  final List<Widget Function()> screenBuilders;
+
+  const _LazyIndexedStack({required this.index, required this.screenBuilders});
+
+  @override
+  State<_LazyIndexedStack> createState() => _LazyIndexedStackState();
+}
+
+class _LazyIndexedStackState extends State<_LazyIndexedStack> {
+  late final List<Widget?> _cache;
+
+  @override
+  void initState() {
+    super.initState();
+    _cache = List<Widget?>.filled(widget.screenBuilders.length, null);
+    // Build the initial screen immediately
+    _cache[widget.index] = widget.screenBuilders[widget.index]();
+  }
+
+  @override
+  void didUpdateWidget(_LazyIndexedStack oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Build the new screen on first visit
+    if (_cache[widget.index] == null) {
+      _cache[widget.index] = widget.screenBuilders[widget.index]();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: List.generate(_cache.length, (i) {
+        final screen = _cache[i];
+        if (screen == null) return const SizedBox.shrink();
+        return Offstage(offstage: i != widget.index, child: screen);
+      }),
     );
   }
 }

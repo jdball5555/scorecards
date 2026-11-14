@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,6 +12,7 @@ import '../features/settings/pages/mail_inbox_screen.dart';
 import '../features/settings/providers/notification_settings_provider.dart';
 // NEW IMPORT: We must import the banner file so we can use its single, global key!
 import '../core/shared_widgets/sleek_notification_banner.dart';
+import 'site_sidebar.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 // DELETED the duplicate globalMessengerKey from here!
@@ -18,6 +20,9 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 Future<void> saveDeviceToken() async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return;
+  // Web push needs a service worker + VAPID key that aren't configured yet;
+  // without them this only pops a browser permission prompt and then fails.
+  if (kIsWeb) return;
 
   try {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
@@ -134,6 +139,9 @@ class _ScorecardsAppState extends ConsumerState<ScorecardsApp> {
       navigatorKey: navigatorKey,
       // FIXED: This is now using the one true key exported from sleek_notification_banner.dart
       scaffoldMessengerKey: globalMessengerKey,
+      navigatorObservers: [routeStackObserver],
+      // Website layout: Axis-style sidebar beside every page (wide screens).
+      builder: (context, child) => SiteChrome(child: child!),
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.transparent,

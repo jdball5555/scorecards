@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 class WhiteFrostTile extends StatelessWidget {
@@ -21,11 +22,11 @@ class WhiteFrostTile extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         // INCREASED FROST: Whiter, more opaque fill
-        color: Colors.white.withOpacity(0.12),
+        color: Colors.white.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           // CRISPER EDGE: Brighter white border
-          color: Colors.white.withOpacity(0.25),
+          color: Colors.white.withValues(alpha: 0.25),
           width: 1.5,
         ),
       ),
@@ -39,8 +40,8 @@ class WhiteFrostTile extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(20),
-          splashColor: Colors.white.withOpacity(0.1),
-          highlightColor: Colors.white.withOpacity(0.05),
+          splashColor: Colors.white.withValues(alpha: 0.1),
+          highlightColor: Colors.white.withValues(alpha: 0.05),
           child: content,
         ),
       );
@@ -48,11 +49,16 @@ class WhiteFrostTile extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        // HEAVIER BLUR: Jumped from 15 to 25 to create a thick ice effect
-        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-        child: content,
-      ),
+      // A live blur per tile is very expensive in the browser and the only
+      // thing behind it is the static background gradient, so the web skips
+      // it (visually almost identical, much smoother scrolling).
+      child: kIsWeb
+          ? content
+          : BackdropFilter(
+              // HEAVIER BLUR: Jumped from 15 to 25 to create a thick ice effect
+              filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+              child: content,
+            ),
     );
   }
 }

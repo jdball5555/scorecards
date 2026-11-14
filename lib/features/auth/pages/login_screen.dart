@@ -1,14 +1,14 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/shared_widgets/gradient_background.dart';
-import '../../../core/shared_widgets/glass_text_field.dart';
-import '../../../core/shared_widgets/app_logo.dart';
 import '../../../core/shared_widgets/sleek_notification_banner.dart';
+import '../../../core/layout/responsive.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -23,7 +23,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
 
   bool _isLoading = false;
-  bool _rememberMe = true;
   bool _isSignUpMode = false;
 
   // --- EMAIL LOGIN ---
@@ -181,34 +180,43 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  // google_sign_in v7 must be initialised exactly once per app run.
+  static Future<void>? _googleInit;
+
+  Future<UserCredential?> _signInWithGoogleCredential() async {
+    if (kIsWeb) {
+      // GoogleSignIn.authenticate() isn't supported on the web; Firebase's
+      // popup flow is the supported path there.
+      final provider = GoogleAuthProvider()
+        ..addScope('email')
+        ..addScope('profile');
+      return FirebaseAuth.instance.signInWithPopup(provider);
+    }
+
+    final googleSignIn = GoogleSignIn.instance;
+    _googleInit ??= googleSignIn.initialize();
+    await _googleInit;
+    final GoogleSignInAccount googleUser = await googleSignIn.authenticate();
+
+    final googleAuth = googleUser.authentication;
+    final clientAuth = await googleUser.authorizationClient.authorizeScopes([
+      'email',
+      'profile',
+    ]);
+
+    final credential = GoogleAuthProvider.credential(
+      accessToken: clientAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+    return FirebaseAuth.instance.signInWithCredential(credential);
+  }
+
   // --- GOOGLE SIGN IN ---
   Future<void> _handleGoogleSignIn() async {
     setState(() => _isLoading = true);
     try {
-      final googleSignIn = GoogleSignIn.instance;
-      await googleSignIn.initialize();
-      final GoogleSignInAccount? googleUser = await googleSignIn.authenticate();
-
-      if (googleUser == null) {
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      final googleAuth = await googleUser.authentication;
-      final clientAuth = await googleUser.authorizationClient.authorizeScopes([
-        'email',
-        'profile',
-      ]);
-
-      final credential = GoogleAuthProvider.credential(
-        accessToken: clientAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final userCredential = await FirebaseAuth.instance.signInWithCredential(
-        credential,
-      );
-      final user = userCredential.user;
+      final userCredential = await _signInWithGoogleCredential();
+      final user = userCredential?.user;
 
       if (user != null) {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -218,6 +226,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         }, SetOptions(merge: true));
       }
     } on FirebaseAuthException catch (e) {
+      // Closing the web popup isn't an error worth shouting about.
+      if (e.code == 'popup-closed-by-user' ||
+          e.code == 'cancelled-popup-request') {
+        return;
+      }
       if (mounted) {
         SleekNotificationBanner.show(
           "Google Sign-In Failed",
@@ -267,256 +280,299 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  // --- Sign-in panel: same look as Optimizer and the other Axis apps ---
+  static const _surface = Color(0xFF0F141E);
+  static const _secondaryText = Color(0xFF94A3B8);
+  static const _border = Color(0x1FFFFFFF);
+
+  ThemeData _opticTheme(ThemeData base) {
+    final pill = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(30),
+    );
+    OutlineInputBorder field(Color c) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: c),
+    );
+    return base.copyWith(
+      // Optimizer uses standard density (desktop would otherwise be compact).
+      visualDensity: VisualDensity.standard,
+      colorScheme: base.colorScheme.copyWith(
+        primary: Colors.white,
+        onPrimary: Colors.black,
+        onSurfaceVariant: _secondaryText,
+        outline: const Color(0x40FFFFFF),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: _surface,
+        hintStyle: const TextStyle(color: _secondaryText),
+        labelStyle: const TextStyle(color: _secondaryText),
+        floatingLabelStyle: const TextStyle(color: Colors.white),
+        border: field(_border),
+        enabledBorder: field(_border),
+        focusedBorder: field(const Color(0x80FFFFFF)),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          disabledBackgroundColor: const Color(0x14FFFFFF),
+          disabledForegroundColor: _secondaryText,
+          shape: pill,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.white,
+          side: const BorderSide(color: Color(0x40FFFFFF)),
+          shape: pill,
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(foregroundColor: Colors.white),
+      ),
+      textSelectionTheme: const TextSelectionThemeData(
+        cursorColor: Colors.white,
+        selectionColor: Color(0x40FFFFFF),
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: Colors.white,
+      ),
+    );
+  }
+
+  Widget _buildForm(BuildContext context) {
+    final theme = Theme.of(context);
+    final creating = _isSignUpMode;
+    const spinner = SizedBox(
+      height: 18,
+      width: 18,
+      child: CircularProgressIndicator(strokeWidth: 2),
+    );
+    void submit() {
+      if (_isLoading) return;
+      creating ? _handleSignUp() : _handleLogin();
+    }
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: AutofillGroup(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Image.asset(
+                    'assets/branding/app_logo.png',
+                    width: 56,
+                    height: 56,
+                    filterQuality: FilterQuality.high,
+                    semanticLabel: 'Scorecards',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Scorecards',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  creating
+                      ? 'Create your Scorecards account'
+                      : 'Sign in to score your games',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: _secondaryText,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                if (creating) ...[
+                  TextField(
+                    controller: _nameController,
+                    textCapitalization: TextCapitalization.words,
+                    autofillHints: const [AutofillHints.name],
+                    decoration: const InputDecoration(labelText: 'Your name'),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  autofillHints: const [AutofillHints.email],
+                  decoration: const InputDecoration(labelText: 'Email'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  autofillHints: [
+                    creating
+                        ? AutofillHints.newPassword
+                        : AutofillHints.password,
+                  ],
+                  decoration: InputDecoration(
+                    labelText: creating ? 'Choose a password' : 'Password',
+                  ),
+                  onSubmitted: (_) => submit(),
+                ),
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: _isLoading ? null : submit,
+                  child: _isLoading
+                      ? spinner
+                      : Text(creating ? 'Create account' : 'Sign in'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _handleGoogleSignIn,
+                  icon: const Icon(Icons.account_circle_outlined),
+                  label: Text(
+                    creating ? 'Sign up with Google' : 'Continue with Google',
+                  ),
+                ),
+                if (!creating)
+                  TextButton(
+                    onPressed: _isLoading ? null : _handleForgotPassword,
+                    child: const Text('Forgot password'),
+                  ),
+                TextButton(
+                  onPressed: _isLoading
+                      ? null
+                      : () => setState(() => _isSignUpMode = !_isSignUpMode),
+                  child: Text(
+                    creating
+                        ? 'I already have an account'
+                        : 'New here? Make an account',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final form = Theme(
+      data: _opticTheme(Theme.of(context)),
+      child: Builder(builder: _buildForm),
+    );
+
     return Scaffold(
       body: GradientBackground(
         child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const AppLogo(fontSize: 40),
-
-                  const SizedBox(height: 8),
-
-                  Text(
-                    _isSignUpMode
-                        ? "Create an account to score your games."
-                        : "Sign in to score your games.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 16,
-                    ),
-                  ),
-
-                  const SizedBox(height: 48),
-
-                  if (_isSignUpMode) ...[
-                    GlassTextField(
-                      controller: _nameController,
-                      hintText: "Display Name",
-                      icon: Icons.person_outline,
-                    ),
-                    const SizedBox(height: 16),
+          child: isWideLayout(context)
+              ? Row(
+                  children: [
+                    const Expanded(child: _LoginHero()),
+                    Expanded(child: form),
                   ],
+                )
+              : form,
+        ),
+      ),
+    );
+  }
+}
 
-                  GlassTextField(
-                    controller: _emailController,
-                    hintText: "Email Address",
-                    icon: Icons.email_outlined,
-                  ),
-                  const SizedBox(height: 16),
-                  GlassTextField(
-                    controller: _passwordController,
-                    hintText: "Password",
-                    icon: Icons.lock_outline,
-                    isPassword: true,
-                  ),
+/// Left-hand pitch shown beside the sign-in form on wide screens.
+class _LoginHero extends StatelessWidget {
+  const _LoginHero();
 
-                  const SizedBox(height: 12),
-
-                  if (!_isSignUpMode)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            SizedBox(
-                              height: 24,
-                              width: 24,
-                              child: Checkbox(
-                                value: _rememberMe,
-                                onChanged: (value) =>
-                                    setState(() => _rememberMe = value ?? true),
-                                activeColor: const Color(0xFF00A2FF),
-                                checkColor: Colors.white,
-                                side: BorderSide(
-                                  color: Colors.white.withOpacity(0.5),
-                                  width: 1.5,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              "Remember this device",
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.8),
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        TextButton(
-                          onPressed: _handleForgotPassword,
-                          style: TextButton.styleFrom(
-                            foregroundColor: const Color(0xFF00A2FF),
-                          ),
-                          child: const Text(
-                            "Forgot Password?",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    const SizedBox(height: 24),
-
-                  const SizedBox(height: 32),
-
-                  Container(
-                    height: 56,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF00A2FF).withOpacity(0.4),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: ElevatedButton(
-                      onPressed: _isLoading
-                          ? null
-                          : (_isSignUpMode ? _handleSignUp : _handleLogin),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00A2FF),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 24,
-                              width: 24,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 3,
-                              ),
-                            )
-                          : Text(
-                              _isSignUpMode ? "CREATE ACCOUNT" : "LOGIN",
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  SizedBox(
-                    height: 56,
-                    child: OutlinedButton(
-                      onPressed: () {
-                        setState(() {
-                          _isSignUpMode = !_isSignUpMode;
-                          _passwordController.clear();
-                        });
-                      },
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: Colors.white.withOpacity(0.2),
-                          width: 1.5,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        backgroundColor: Colors.black.withOpacity(0.2),
-                      ),
-                      child: Text(
-                        _isSignUpMode ? "LOG IN INSTEAD" : "CREATE NEW ACCOUNT",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Divider(
-                          color: Colors.white.withOpacity(0.2),
-                          thickness: 1.5,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text(
-                          "OR",
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.5),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: Divider(
-                          color: Colors.white.withOpacity(0.2),
-                          thickness: 1.5,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  SizedBox(
-                    height: 56,
-                    child: OutlinedButton.icon(
-                      onPressed: _isLoading ? null : _handleGoogleSignIn,
-                      icon: const Icon(
-                        Icons.g_mobiledata,
-                        size: 36,
-                        color: Colors.white,
-                      ),
-                      label: const Text(
-                        "CONTINUE WITH GOOGLE",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: Colors.white.withOpacity(0.2),
-                          width: 1.5,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        backgroundColor: Colors.white.withOpacity(0.05),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+  @override
+  Widget build(BuildContext context) {
+    Widget point(IconData icon, String title, String body) => Padding(
+      padding: const EdgeInsets.only(bottom: 22),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF00A2FF).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
             ),
+            child: Icon(icon, color: const Color(0xFF00A2FF), size: 22),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  body,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 14,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(56, 32, 32, 32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Every game night,\nscored.",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 44,
+                  fontWeight: FontWeight.w900,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                "Scorecards keeps score for your card and board games, so you can play instead of doing math.",
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.65),
+                  fontSize: 17,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 36),
+              point(
+                Icons.style_rounded,
+                "Ready-made scorecards",
+                "Spades, Yahtzee, Nerts, Nines, Wavelength and more.",
+              ),
+              point(
+                Icons.dashboard_customize_rounded,
+                "Build your own",
+                "Design a scorecard for any game, or scan the rulebook.",
+              ),
+              point(
+                Icons.groups_rounded,
+                "Play with your group",
+                "Share scorecards live and track everyone's stats over time.",
+              ),
+            ],
           ),
         ),
       ),

@@ -7,6 +7,12 @@ class GradientBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Already drawn by an ancestor (the website frame or the app shell):
+    // painting it again would show a box-shaped seam and cost a repaint.
+    if (context.dependOnInheritedWidgetOfExactType<_BackgroundPainted>() !=
+        null) {
+      return child;
+    }
     final size = MediaQuery.sizeOf(context);
 
     // Grabs the longest side of the screen to create a perfect square canvas.
@@ -62,9 +68,16 @@ class GradientBackground extends StatelessWidget {
           ),
 
           // --- ACTUAL APP CONTENT ---
-          child,
+          _BackgroundPainted(child: child),
         ],
       ),
     );
   }
+}
+
+class _BackgroundPainted extends InheritedWidget {
+  const _BackgroundPainted({required super.child});
+
+  @override
+  bool updateShouldNotify(_BackgroundPainted oldWidget) => false;
 }

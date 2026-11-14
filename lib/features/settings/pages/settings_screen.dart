@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/shared_widgets/white_frost_tile.dart';
 import '../providers/mail_provider.dart';
 import '../providers/notification_settings_provider.dart';
 import 'mail_inbox_screen.dart';
+import '../../../core/layout/responsive.dart';
+import 'package:scorecards_app/core/shared_widgets/top_bar_background.dart';
+import 'feedback_form.dart'; // --- NEW IMPORT ---
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -64,6 +68,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 if (newName.isNotEmpty && newName != user.displayName) {
                   await user.updateDisplayName(newName);
                   await user.reload();
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .set({'displayName': newName}, SetOptions(merge: true));
                   setState(() {});
 
                   if (context.mounted) {
@@ -106,28 +114,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       {'key': 'group_deleted', 'title': 'Group Gets Deleted'},
       {'key': 'new_player_added', 'title': 'Player Added to Group'},
       {'key': 'player_removed', 'title': 'Player Removed From Group'},
-      {'key': 'player_left', 'title': 'Player Leaves Group'}, // NEW TOGGLE
+      {'key': 'player_left', 'title': 'Player Leaves Group'},
       {'key': 'new_player_linked', 'title': 'New Player Linked in a Group'},
       {'key': 'invite_accepted', 'title': 'User Accepts Your Invite'},
+      {'key': 'new_scorecard_added', 'title': 'New Scorecard in Group'},
     ];
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: false,
         title: const Text(
           "Settings",
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.2,
+            fontSize: 24,
+          ),
         ),
-        centerTitle: true,
+        flexibleSpace: const TopBarBackground(),
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 20,
-          vertical: 10,
-        ).copyWith(bottom: 120),
-        physics: const BouncingScrollPhysics(),
+        padding: EdgeInsets.only(
+          top: MediaQuery.of(context).padding.top + kToolbarHeight + 20,
+          left: readableSide(context),
+          right: readableSide(context),
+          bottom: 40,
+        ),
+        physics: const ClampingScrollPhysics(),
         children: [
           WhiteFrostTile(
             child: Column(
@@ -393,6 +412,70 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
+
+          // --- NEW: SUPPORT SECTION ---
+          const SizedBox(height: 24),
+
+          WhiteFrostTile(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "SUPPORT",
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        settings: const RouteSettings(name: '/feedback'),
+                        builder: (_) => const FeedbackFormScreen(),
+                      ),
+                    );
+                  },
+                  child: const Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          "Feedback / Report an Issue",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right, color: Colors.white54),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // --- NEW: VERSION TRACKER ---
+          const SizedBox(height: 32),
+          const Center(
+            child: Text(
+              "Scorecards v0.2.0",
+              style: TextStyle(
+                color: Colors.white38,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.0,
+              ),
+            ),
+          ),
+          const SizedBox(height: 60),
         ],
       ),
     );

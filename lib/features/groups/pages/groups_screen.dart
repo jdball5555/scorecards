@@ -1,10 +1,12 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../services/group_service.dart';
 import '../../../core/shared_widgets/sleek_notification_banner.dart';
+import 'groups_customize_screen.dart';
+import '../../../core/layout/responsive.dart';
+import 'package:scorecards_app/core/shared_widgets/top_bar_background.dart';
 
 class GroupsScreen extends StatefulWidget {
   const GroupsScreen({super.key});
@@ -16,15 +18,8 @@ class GroupsScreen extends StatefulWidget {
 class _GroupsScreenState extends State<GroupsScreen> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
   final GroupService _groupService = GroupService();
-  final ValueNotifier<bool> _showFabNotifier = ValueNotifier<bool>(true);
 
   final Map<String, Map<String, dynamic>> _userCache = {};
-
-  @override
-  void dispose() {
-    _showFabNotifier.dispose();
-    super.dispose();
-  }
 
   Future<Map<String, dynamic>> _getCachedUserData(String uid) async {
     if (_userCache.containsKey(uid)) {
@@ -39,6 +34,75 @@ class _GroupsScreenState extends State<GroupsScreen> {
       return doc.data()!;
     }
     return {'displayName': 'Unknown Player', 'email': 'No email'};
+  }
+
+  /// Runs a group action and shows what happened. Failures (no connection,
+  /// no permission...) used to be silent, which looked like dead buttons.
+  Future<void> _run(
+    Future<void> Function() action, {
+    String? successTitle,
+    String? successMessage,
+  }) async {
+    try {
+      await action();
+      if (successTitle != null) {
+        SleekNotificationBanner.show(
+          successTitle,
+          successMessage ?? '',
+          icon: Icons.check_circle,
+          color: const Color(0xFF00A2FF),
+        );
+      }
+    } catch (e) {
+      debugPrint('Group action failed: $e');
+      SleekNotificationBanner.show(
+        "Couldn't do that",
+        _friendlyError(e),
+        icon: Icons.error_outline,
+        color: Colors.redAccent,
+      );
+    }
+  }
+
+  String _friendlyError(Object e) {
+    final text = e.toString();
+    if (text.contains('permission-denied')) {
+      return "You don't have permission to change this group.";
+    }
+    if (text.contains('unavailable') || text.contains('network')) {
+      return 'No connection. Check your internet and try again.';
+    }
+    return text.replaceFirst(RegExp(r'^\[[^\]]*\]\s*'), '');
+  }
+
+  /// A player's options: a bottom sheet on phones, a centered dialog on the
+  /// website (a sheet at the bottom of a big window is easy to miss).
+  void _showPlayerOptions(Widget Function(BuildContext ctx) builder) {
+    if (isWideLayout(context)) {
+      showDialog(
+        context: context,
+        builder: (ctx) => Dialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: builder(ctx),
+          ),
+        ),
+      );
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: builder,
+    );
   }
 
   Future<void> _showTextInputDialog({
@@ -117,7 +181,8 @@ class _GroupsScreenState extends State<GroupsScreen> {
   Future<void> _showEmailInputDialog({
     required String groupId,
     required String groupName,
-    String? localPlayerToReplace,
+    String? localPlayerIdToReplace,
+    String? localPlayerNameToReplace,
   }) async {
     final TextEditingController controller = TextEditingController();
 
@@ -133,21 +198,37 @@ class _GroupsScreenState extends State<GroupsScreen> {
             "Link Account",
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            style: const TextStyle(color: Colors.white),
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: "Player's Email Address",
-              labelStyle: TextStyle(color: Colors.white54),
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.white24),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (localPlayerNameToReplace != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    "Enter the email of their Scorecards account. "
+                    "Once linked, $localPlayerNameToReplace becomes that "
+                    "account and their past games in $groupName move to it.",
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                ),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: "Player's Email Address",
+                  labelStyle: TextStyle(color: Colors.white54),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24),
+                  ),
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFF00A2FF)),
+                  ),
+                ),
               ),
-              focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFF00A2FF)),
-              ),
-            ),
+            ],
           ),
           actions: [
             TextButton(
@@ -165,26 +246,37 @@ class _GroupsScreenState extends State<GroupsScreen> {
                 if (controller.text.trim().isNotEmpty) {
                   Navigator.pop(dialogContext);
 
-                  final result = await _groupService.sendInvite(
-                    groupId,
-                    groupName,
-                    controller.text,
-                    currentUser?.displayName ?? "A player",
-                    localPlayerToReplace: localPlayerToReplace,
-                  );
+                  String result;
+                  try {
+                    result = await _groupService.sendInvite(
+                      groupId,
+                      groupName,
+                      controller.text,
+                      currentUser?.displayName ?? "A player",
+                      localPlayerIdToReplace: localPlayerIdToReplace,
+                      localPlayerNameToReplace: localPlayerNameToReplace,
+                    );
+                  } catch (e) {
+                    result = _friendlyError(e);
+                  }
 
-                  // --- 1-LINE GLOBAL BANNER CALL ---
+                  final ok = result == "Success" || result == "Linked";
+                  final who = localPlayerNameToReplace;
                   SleekNotificationBanner.show(
-                    result == "Success" ? "Invite Sent!" : "Error",
-                    result == "Success"
-                        ? "Your invite was sent successfully."
+                    result == "Linked"
+                        ? "Linked!"
+                        : ok
+                        ? "Invite Sent!"
+                        : "Couldn't send invite",
+                    result == "Linked"
+                        ? "${who ?? 'That player'} is now that account, games and all."
+                        : ok
+                        ? (who != null
+                              ? "When they accept, $who becomes their account and $who's games move to them."
+                              : "Your invite was sent successfully.")
                         : result,
-                    icon: result == "Success"
-                        ? Icons.check_circle
-                        : Icons.error_outline,
-                    color: result == "Success"
-                        ? const Color(0xFF00A2FF)
-                        : Colors.redAccent,
+                    icon: ok ? Icons.check_circle : Icons.error_outline,
+                    color: ok ? const Color(0xFF00A2FF) : Colors.redAccent,
                   );
                 }
               },
@@ -243,7 +335,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () async {
               Navigator.pop(ctx);
-              await _groupService.leaveGroup(groupId, groupName);
+              await _run(() => _groupService.leaveGroup(groupId, groupName));
             },
             child: const Text(
               "Leave Group",
@@ -296,7 +388,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () async {
               Navigator.pop(ctx);
-              await _groupService.deleteGroup(groupId, groupName);
+              await _run(() => _groupService.deleteGroup(groupId, groupName));
             },
             child: const Text(
               "DELETE PERMANENTLY",
@@ -364,11 +456,15 @@ class _GroupsScreenState extends State<GroupsScreen> {
                           ),
                           onPressed: () async {
                             Navigator.pop(ctx);
-                            await _groupService.transferOwnership(
-                              groupId,
-                              groupName,
-                              uid,
-                              name,
+                            await _run(
+                              () => _groupService.transferOwnership(
+                                groupId,
+                                groupName,
+                                uid,
+                                name,
+                              ),
+                              successTitle: 'Ownership Transferred',
+                              successMessage: '$name now owns $groupName.',
                             );
                           },
                           child: const Text(
@@ -421,118 +517,170 @@ class _GroupsScreenState extends State<GroupsScreen> {
     String groupId,
     String groupName,
     String playerName,
+    String playerId,
     bool isGuest,
     bool amIOwner,
+    bool isHidden,
   ) {
     final Color iconColor = const Color(0xFF7855C1);
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 24,
-                      backgroundColor: iconColor.withOpacity(0.2),
-                      child: Text(
-                        playerName[0].toUpperCase(),
-                        style: TextStyle(
-                          color: iconColor,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      playerName,
-                      style: const TextStyle(
-                        color: Colors.white,
+    _showPlayerOptions((ctx) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: iconColor.withOpacity(0.2),
+                    child: Text(
+                      playerName.isNotEmpty ? playerName[0].toUpperCase() : '?',
+                      style: TextStyle(
+                        color: iconColor,
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Text(
-                      isGuest ? "Local Guest" : "Local Member",
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    playerName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
-                ),
+                  ),
+                  Text(
+                    isGuest ? "Local Guest" : "Local Member",
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      playerId,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 10,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              Divider(color: Colors.white.withOpacity(0.1)),
+            ),
+            Divider(color: Colors.white.withOpacity(0.1)),
+            ListTile(
+              leading: Icon(
+                isHidden ? Icons.visibility : Icons.visibility_off,
+                color: iconColor,
+              ),
+              title: Text(
+                isHidden ? "Unhide Player" : "Hide Player",
+                style: const TextStyle(color: Colors.white),
+              ),
+              subtitle: const Text(
+                "Toggles visibility in scorecard creation",
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _run(
+                  () => _groupService.togglePlayerVisibility(
+                    groupId,
+                    playerId,
+                    !isHidden,
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.edit, color: iconColor),
+              title: const Text(
+                "Change Name",
+                style: TextStyle(color: Colors.white),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showTextInputDialog(
+                  title: "Change Name",
+                  label: "New Name",
+                  initialValue: playerName,
+                  buttonText: "Save",
+                  onSubmit: (newName) => _run(
+                    () => _groupService.renamePlayer(
+                      groupId,
+                      playerId,
+                      newName,
+                      isGuest,
+                    ),
+                    successTitle: 'Name Changed',
+                    successMessage: '$playerName is now $newName.',
+                  ),
+                );
+              },
+            ),
+            if (isGuest || playerName != currentUser?.displayName)
               ListTile(
-                leading: Icon(Icons.edit, color: iconColor),
+                leading: Icon(Icons.link, color: iconColor),
                 title: const Text(
-                  "Change Name",
+                  "Link Account",
                   style: TextStyle(color: Colors.white),
+                ),
+                subtitle: const Text(
+                  "Make this player someone's account",
+                  style: TextStyle(color: Colors.white54, fontSize: 11),
                 ),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _showTextInputDialog(
-                    title: "Change Name",
-                    label: "New Name",
-                    initialValue: playerName,
-                    buttonText: "Save",
-                    onSubmit: (newName) async => await _groupService
-                        .renamePlayer(groupId, playerName, newName, isGuest),
+                  _showEmailInputDialog(
+                    groupId: groupId,
+                    groupName: groupName,
+                    localPlayerIdToReplace: playerId,
+                    localPlayerNameToReplace: playerName,
                   );
                 },
               ),
-              if (isGuest || playerName != currentUser?.displayName)
-                ListTile(
-                  leading: Icon(Icons.link, color: iconColor),
-                  title: const Text(
-                    "Link Account",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  subtitle: const Text(
-                    "Send an invite to a registered user",
-                    style: TextStyle(color: Colors.white54, fontSize: 11),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _showEmailInputDialog(
-                      groupId: groupId,
-                      groupName: groupName,
-                      localPlayerToReplace: playerName,
-                    );
-                  },
+            if (amIOwner)
+              ListTile(
+                leading: const Icon(
+                  Icons.person_remove,
+                  color: Colors.redAccent,
                 ),
-              if (amIOwner)
-                ListTile(
-                  leading: const Icon(
-                    Icons.person_remove,
-                    color: Colors.redAccent,
-                  ),
-                  title: const Text(
-                    "Remove",
-                    style: TextStyle(color: Colors.redAccent),
-                  ),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await _groupService.removePlayer(
+                title: const Text(
+                  "Remove",
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await _run(
+                    () => _groupService.removePlayer(
                       groupId,
+                      playerId,
                       playerName,
                       isGuest,
-                    );
-                  },
-                ),
-              const SizedBox(height: 10),
-            ],
-          ),
-        );
-      },
-    );
+                    ),
+                    successTitle: 'Removed',
+                    successMessage: '$playerName was removed.',
+                  );
+                },
+              ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      );
+    });
   }
 
   void _showSyncedPlayerOptions(
@@ -543,149 +691,187 @@ class _GroupsScreenState extends State<GroupsScreen> {
     String groupId,
     String groupName,
     String targetUid,
+    bool isHidden,
   ) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 24,
-                      backgroundColor: const Color(0xFF00A2FF).withOpacity(0.2),
-                      child: Icon(
-                        isOwner ? Icons.workspace_premium : Icons.person,
-                        color: const Color(0xFF00A2FF),
-                        size: 28,
-                      ),
+    _showPlayerOptions((ctx) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: const Color(0xFF00A2FF).withOpacity(0.2),
+                    child: Icon(
+                      isOwner ? Icons.workspace_premium : Icons.person,
+                      color: const Color(0xFF00A2FF),
+                      size: 28,
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      name,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      email,
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                        color: Colors.white70,
+                        fontSize: 12,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white10,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        email,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                        ),
-                      ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    targetUid,
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 10,
+                      fontFamily: 'monospace',
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              if (amIOwner && !isOwner) ...[
-                Divider(color: Colors.white.withOpacity(0.1)),
-                ListTile(
-                  leading: const Icon(
-                    Icons.person_remove,
-                    color: Colors.redAccent,
+            ),
+            Divider(color: Colors.white.withOpacity(0.1)),
+            ListTile(
+              leading: Icon(
+                isHidden ? Icons.visibility : Icons.visibility_off,
+                color: const Color(0xFF00A2FF),
+              ),
+              title: Text(
+                isHidden ? "Unhide Player" : "Hide Player",
+                style: const TextStyle(color: Colors.white),
+              ),
+              subtitle: const Text(
+                "Toggles visibility in scorecard creation",
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _run(
+                  () => _groupService.togglePlayerVisibility(
+                    groupId,
+                    targetUid,
+                    !isHidden,
                   ),
-                  title: const Text(
-                    "Remove Player",
-                    style: TextStyle(color: Colors.redAccent),
-                  ),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await _groupService.kickMember(
+                );
+              },
+            ),
+            if (amIOwner && !isOwner) ...[
+              ListTile(
+                leading: const Icon(
+                  Icons.person_remove,
+                  color: Colors.redAccent,
+                ),
+                title: const Text(
+                  "Remove Player",
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await _run(
+                    () => _groupService.kickMember(
                       groupId,
                       groupName,
                       targetUid,
                       name,
-                    );
-                  },
-                ),
-              ],
-              const SizedBox(height: 10),
+                    ),
+                    successTitle: 'Removed',
+                    successMessage: '$name was removed from $groupName.',
+                  );
+                },
+              ),
             ],
-          ),
-        );
-      },
-    );
+            const SizedBox(height: 10),
+          ],
+        ),
+      );
+    });
   }
 
   Widget _buildPlayerChip(
     String name,
     IconData icon,
     Color color,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.5)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 6),
-            Text(
-              name,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: color,
+    VoidCallback onTap, {
+    bool isHidden = false,
+  }) {
+    final double opacity = isHidden ? 0.3 : 1.0;
+
+    return Material(
+      color: color.withOpacity(0.15 * opacity),
+      shape: StadiumBorder(
+        side: BorderSide(color: color.withOpacity(0.5 * opacity)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        hoverColor: color.withOpacity(0.12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: color.withOpacity(opacity)),
+              const SizedBox(width: 6),
+              Text(
+                name,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: color.withOpacity(opacity),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildAddButton(String label, Color color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color, style: BorderStyle.solid),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.add, size: 14, color: color),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: color,
+    return Material(
+      color: Colors.transparent,
+      shape: StadiumBorder(side: BorderSide(color: color)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        hoverColor: color.withOpacity(0.12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add, size: 14, color: color),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -697,17 +883,38 @@ class _GroupsScreenState extends State<GroupsScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: false,
+        titleSpacing: 20,
         title: const Text(
           'Manage Groups',
           style: TextStyle(
-            fontWeight: FontWeight.w900,
             color: Colors.white,
-            letterSpacing: 0.5,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.2,
+            fontSize: 24,
           ),
         ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.tune_rounded, color: Colors.white70),
+            tooltip: 'Customize Groups',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const GroupsCustomizeScreen(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
+        flexibleSpace: const TopBarBackground(),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
@@ -715,34 +922,67 @@ class _GroupsScreenState extends State<GroupsScreen> {
             .where('members', arrayContains: currentUser!.uid)
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(color: Color(0xFF00A2FF)),
             );
+          }
           final groups = snapshot.data?.docs ?? [];
-          if (groups.isEmpty)
+          if (groups.isEmpty) {
             return Center(
-              child: Text(
-                "You aren't in any Game Groups yet.",
-                style: TextStyle(color: Colors.white.withOpacity(0.5)),
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.groups_outlined,
+                      size: 56,
+                      color: Colors.white.withValues(alpha: 0.25),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      "No game groups yet",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      "Create one with the settings button (top right), or ask a friend to invite you, to share scorecards and stats.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
+          }
 
-          return NotificationListener<UserScrollNotification>(
-            onNotification: (notification) {
-              if (notification.direction == ScrollDirection.reverse)
-                _showFabNotifier.value = false;
-              else if (notification.direction == ScrollDirection.forward)
-                _showFabNotifier.value = true;
-              return true;
+          return RefreshIndicator(
+            edgeOffset:
+                MediaQuery.of(context).padding.top + kToolbarHeight - 32,
+            color: const Color(0xFF00A2FF),
+            backgroundColor: const Color(0xFF1E1E1E),
+            onRefresh: () async {
+              // Delay gives user visual feedback; StreamBuilder handles the actual syncing.
+              await Future.delayed(const Duration(milliseconds: 500));
+              if (mounted) setState(() {});
             },
             child: ListView.builder(
-              // BUMPED BOTTOM PADDING to make room for higher FAB
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 10,
-              ).copyWith(bottom: 210),
-              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top + kToolbarHeight - 32,
+                left: readableSide(context, maxWidth: 920),
+                right: readableSide(context, maxWidth: 920),
+                bottom: 100,
+              ),
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: ClampingScrollPhysics(),
+              ),
               itemCount: groups.length,
               itemBuilder: (context, index) {
                 final groupData = groups[index].data() as Map<String, dynamic>;
@@ -752,10 +992,31 @@ class _GroupsScreenState extends State<GroupsScreen> {
                 final amIOwner = ownerUid == currentUser!.uid;
 
                 final members = List<String>.from(groupData['members'] ?? []);
-                final localMembers = List<String>.from(
-                  groupData['localMembers'] ?? [],
+
+                List<Map<String, String>> parseLocalPlayers(List<dynamic> raw) {
+                  return raw.map<Map<String, String>>((e) {
+                    if (e is String) {
+                      return <String, String>{'id': e, 'name': e};
+                    }
+                    if (e is Map) {
+                      return <String, String>{
+                        'id': e['id']?.toString() ?? '',
+                        'name': e['name']?.toString() ?? '',
+                      };
+                    }
+                    return <String, String>{'id': '', 'name': ''};
+                  }).toList();
+                }
+
+                final localMembers = parseLocalPlayers(
+                  (groupData['localMembers'] as List<dynamic>?) ?? [],
                 );
-                final guests = List<String>.from(groupData['guests'] ?? []);
+                final guests = parseLocalPlayers(
+                  (groupData['guests'] as List<dynamic>?) ?? [],
+                );
+                final hiddenPlayers = List<String>.from(
+                  groupData['hiddenPlayers'] ?? [],
+                );
 
                 members.sort((a, b) {
                   if (a == currentUser!.uid) return -1;
@@ -766,8 +1027,8 @@ class _GroupsScreenState extends State<GroupsScreen> {
                 });
 
                 return Container(
-                  margin: const EdgeInsets.only(bottom: 24),
-                  padding: const EdgeInsets.all(24),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1E1E1E).withOpacity(0.8),
                     borderRadius: BorderRadius.circular(24),
@@ -802,21 +1063,22 @@ class _GroupsScreenState extends State<GroupsScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             onSelected: (value) {
-                              if (value == 'leave')
+                              if (value == 'leave') {
                                 _confirmLeaveGroup(
                                   groupId,
                                   groupName,
                                   amIOwner,
                                   members,
                                 );
-                              else if (value == 'delete')
+                              } else if (value == 'delete') {
                                 _confirmDeleteGroup(groupId, groupName);
-                              else if (value == 'transfer')
+                              } else if (value == 'transfer') {
                                 _showTransferOwnershipDialog(
                                   groupId,
                                   groupName,
                                   members,
                                 );
+                              }
                             },
                             itemBuilder: (context) => [
                               if (amIOwner)
@@ -878,7 +1140,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
 
                       const Text(
                         "MEMBERS",
@@ -899,20 +1161,32 @@ class _GroupsScreenState extends State<GroupsScreen> {
                             final icon = isOwner
                                 ? Icons.workspace_premium
                                 : Icons.person;
-
+                            final isHidden = hiddenPlayers.contains(uid);
                             if (uid == currentUser!.uid) {
                               return _buildPlayerChip(
                                 "You",
                                 icon,
                                 const Color(0xFF00A2FF),
-                                () {},
+                                () => _showSyncedPlayerOptions(
+                                  "You",
+                                  currentUser!.email ?? "",
+                                  isOwner,
+                                  amIOwner,
+                                  groupId,
+                                  groupName,
+                                  uid,
+                                  isHidden,
+                                ),
+                                isHidden: isHidden,
                               );
                             }
 
                             return FutureBuilder<Map<String, dynamic>>(
                               future: _getCachedUserData(uid),
                               builder: (context, snapshot) {
-                                if (!snapshot.hasData) return const SizedBox();
+                                if (!snapshot.hasData) {
+                                  return const SizedBox();
+                                }
                                 final data = snapshot.data!;
                                 final name = data['displayName'] ?? "Player";
                                 final email = data['email'] ?? "Unknown Email";
@@ -929,24 +1203,29 @@ class _GroupsScreenState extends State<GroupsScreen> {
                                     groupId,
                                     groupName,
                                     uid,
+                                    isHidden,
                                   ),
+                                  isHidden: isHidden,
                                 );
                               },
                             );
                           }),
 
                           ...localMembers.map(
-                            (playerName) => _buildPlayerChip(
-                              playerName,
+                            (player) => _buildPlayerChip(
+                              player['name']!,
                               Icons.person,
                               const Color(0xFF7855C1),
                               () => _showLocalPlayerOptions(
                                 groupId,
                                 groupName,
-                                playerName,
+                                player['name']!,
+                                player['id']!,
                                 false,
                                 amIOwner,
+                                hiddenPlayers.contains(player['id']),
                               ),
+                              isHidden: hiddenPlayers.contains(player['id']),
                             ),
                           ),
 
@@ -958,8 +1237,16 @@ class _GroupsScreenState extends State<GroupsScreen> {
                                 title: "Add Member",
                                 label: "Player Name",
                                 buttonText: "Add",
-                                onSubmit: (name) async => await _groupService
-                                    .addPlayer(groupId, name, false),
+                                onSubmit: (name) => _run(
+                                  () => _groupService.addPlayer(
+                                    groupId,
+                                    name,
+                                    false,
+                                  ),
+                                  successTitle: 'Member Added',
+                                  successMessage:
+                                      '$name was added to $groupName.',
+                                ),
                               );
                             },
                           ),
@@ -983,17 +1270,20 @@ class _GroupsScreenState extends State<GroupsScreen> {
                         runSpacing: 10,
                         children: [
                           ...guests.map(
-                            (playerName) => _buildPlayerChip(
-                              playerName,
+                            (player) => _buildPlayerChip(
+                              player['name']!,
                               Icons.person_outline,
                               const Color(0xFF7855C1),
                               () => _showLocalPlayerOptions(
                                 groupId,
                                 groupName,
-                                playerName,
+                                player['name']!,
+                                player['id']!,
                                 true,
                                 amIOwner,
+                                hiddenPlayers.contains(player['id']),
                               ),
+                              isHidden: hiddenPlayers.contains(player['id']),
                             ),
                           ),
 
@@ -1005,8 +1295,16 @@ class _GroupsScreenState extends State<GroupsScreen> {
                                 title: "Add Guest",
                                 label: "Guest Name",
                                 buttonText: "Add",
-                                onSubmit: (name) async => await _groupService
-                                    .addPlayer(groupId, name, true),
+                                onSubmit: (name) => _run(
+                                  () => _groupService.addPlayer(
+                                    groupId,
+                                    name,
+                                    true,
+                                  ),
+                                  successTitle: 'Guest Added',
+                                  successMessage:
+                                      '$name was added to $groupName.',
+                                ),
                               );
                             },
                           ),
@@ -1016,75 +1314,6 @@ class _GroupsScreenState extends State<GroupsScreen> {
                   ),
                 );
               },
-            ),
-          );
-        },
-      ),
-      floatingActionButton: ValueListenableBuilder<bool>(
-        valueListenable: _showFabNotifier,
-        builder: (context, isVisible, child) {
-          return AnimatedSlide(
-            duration: const Duration(milliseconds: 250),
-            offset: isVisible ? Offset.zero : const Offset(0, 2),
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 250),
-              opacity: isVisible ? 1.0 : 0.0,
-              child: Padding(
-                // BUMPED TO 160 TO MAKE ROOM FOR THE BANNER SLOT
-                padding: const EdgeInsets.only(bottom: 160.0, right: 10.0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      height: 64,
-                      width: 64,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            const Color(0xFF7855C1).withOpacity(0.6),
-                            const Color(0xFF7855C1).withOpacity(0.1),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF7855C1).withOpacity(0.3),
-                            blurRadius: 16,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: IconButton(
-                        icon: const Icon(
-                          Icons.add,
-                          color: Colors.white,
-                          size: 32,
-                        ),
-                        onPressed: () {
-                          _showTextInputDialog(
-                            title: "New Game Group",
-                            label: "Group Name",
-                            buttonText: "Create",
-                            onSubmit: (name) async {
-                              if (currentUser != null)
-                                await _groupService.createGroup(
-                                  name,
-                                  currentUser!.uid,
-                                );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             ),
           );
         },

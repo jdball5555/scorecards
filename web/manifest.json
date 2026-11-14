@@ -1,11 +1,11 @@
 {
-    "name": "scorecards_app",
-    "short_name": "scorecards_app",
+    "name": "Scorecards",
+    "short_name": "Scorecards",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#05050A",
+    "theme_color": "#05050A",
+    "description": "Keep score for card and board games, build custom scorecards, and track stats with your game groups.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

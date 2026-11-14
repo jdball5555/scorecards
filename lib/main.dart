@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'firebase_options.dart';
 import 'app/app.dart'; // Adjust this path to match your file location
+import 'core/web/splash_remover.dart';
 
 void main() async {
   // Fixes the native isolate crash by binding the engine before initializing Firebase
@@ -17,4 +18,5 @@ void main() async {
   }
 
   runApp(const ProviderScope(child: ScorecardsApp()));
+  WidgetsBinding.instance.addPostFrameCallback((_) => removeWebSplash());
 }
