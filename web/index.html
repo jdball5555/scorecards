@@ -18,6 +18,21 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="Scorecards: keep score for card and board games, build your own scorecards, and track stats with your game groups.">
   <meta name="theme-color" content="#05050A">
+  <!-- Dark page: Android Chrome colors the area around its bottom gesture bar
+       from the page background, which was white once the splash was removed. -->
+  <meta name="color-scheme" content="dark">
+  <style id="page-background">
+    html, body { background-color: #05050A; }
+  </style>
+  <script id="invite-link">
+    // Drops ?join=... (an "Invite with a link" invite) from the address bar
+    // once it's been used, so refreshing doesn't offer it again.
+    function clearInviteFromUrl() {
+      const url = new URL(window.location.href);
+      ["join", "g", "p"].forEach((k) => url.searchParams.delete(k));
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
+  </script>
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -101,7 +116,7 @@
     function removeSplashFromWeb() {
       document.getElementById("splash")?.remove();
       document.getElementById("splash-branding")?.remove();
-      document.body.style.background = "transparent";
+      document.body.style.background = "#05050A";
     }
   </script>
 </head>

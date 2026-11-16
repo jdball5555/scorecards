@@ -67,14 +67,15 @@ class CustomTemplate extends GameTemplate {
   }
 
   int _inputsPerPlayer(Map<String, dynamic> customSettings) {
-    final v = _layout(customSettings)['inputsPerPlayer'] ??
+    final v =
+        _layout(customSettings)['inputsPerPlayer'] ??
         customSettings['inputsPerPlayer'];
     return (int.tryParse('$v') ?? 1).clamp(1, 20);
   }
 
   Map<String, String> _customNames(Map<String, dynamic> customSettings) {
-    final names = _layout(customSettings)['customNames'] ??
-        customSettings['customNames'];
+    final names =
+        _layout(customSettings)['customNames'] ?? customSettings['customNames'];
     if (names is Map) {
       return names.map((k, v) => MapEntry(k.toString(), v.toString()));
     }
@@ -97,8 +98,8 @@ class CustomTemplate extends GameTemplate {
     Map<String, dynamic> customSettings,
     int roundCount,
   ) {
-    final raw = _layout(customSettings)['layoutRows'] ??
-        customSettings['layoutRows'];
+    final raw =
+        _layout(customSettings)['layoutRows'] ?? customSettings['layoutRows'];
     final rows = raw is List
         ? raw.map((e) => e.toString()).toList()
         : <String>['round_0'];
@@ -143,7 +144,8 @@ class CustomTemplate extends GameTemplate {
       List<String> blueprint = List<String>.from(
         layout['blueprintColumns'] ?? ['player_core'],
       );
-      if (!blueprint.contains('player_core')) blueprint.insert(0, 'player_core');
+      if (!blueprint.contains('player_core'))
+        blueprint.insert(0, 'player_core');
       List<String> lockedRight = List<String>.from(
         layout['lockedRightColumns'] ?? [],
       );
@@ -532,7 +534,8 @@ class CustomTemplate extends GameTemplate {
   }) {
     final activeCols = _getActiveColumns(playerNames.length, customSettings);
     final customNames = _customNames(customSettings);
-    final Map<String, dynamic> cellConfigs = customSettings['cellConfigs'] is Map
+    final Map<String, dynamic> cellConfigs =
+        customSettings['cellConfigs'] is Map
         ? Map<String, dynamic>.from(customSettings['cellConfigs'])
         : {};
     final int inputsPerPlayer = _inputsPerPlayer(customSettings);
@@ -624,7 +627,9 @@ class CustomTemplate extends GameTemplate {
       String rowId = layoutRows[r];
       final bool isScoring = _isScoringRow(rowId);
       if (isScoring) roundCounter++;
-      String rLabel = isScoring ? "$roundCounter" : (customNames[rowId] ?? "Cust");
+      String rLabel = isScoring
+          ? "$roundCounter"
+          : (customNames[rowId] ?? "Cust");
       String rTitle = isScoring ? "Round $roundCounter" : rLabel;
 
       List<Widget> rowCells = [

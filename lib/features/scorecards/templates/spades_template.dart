@@ -84,7 +84,11 @@ class SpadesTemplate extends GameTemplate {
   }
 
   @override
-  bool canAddRound(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) {
+  bool canAddRound(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) {
     if (rounds.isEmpty) {
       return true;
     }
@@ -102,7 +106,11 @@ class SpadesTemplate extends GameTemplate {
   }
 
   @override
-  bool isReadyToFinalize(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) {
+  bool isReadyToFinalize(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) {
     if (rounds.isEmpty) {
       return false;
     }

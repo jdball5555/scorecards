@@ -91,8 +91,6 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
       }
     }
 
-
-
     if (card != null) {
       _playerNames = List.from(card.playerNames);
       _playerIds = List.from(card.playerIds);
@@ -325,7 +323,7 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
       Navigator.pop(context);
       return;
     }
-    
+
     if (_isViewingMode && _isFinalized) {
       _uploadToCloud(silent: true);
     }
@@ -452,7 +450,11 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
       }
     }
 
-    if (!_template.isReadyToFinalize(_rounds, _playerNames.length, customSettings: _customSettings)) {
+    if (!_template.isReadyToFinalize(
+      _rounds,
+      _playerNames.length,
+      customSettings: _customSettings,
+    )) {
       if (_template is SpadesTemplate && _rounds.isNotEmpty) {
         final spades = _template as SpadesTemplate;
         bool hasInvalidMath = _rounds.any((r) => !spades.isRoundMathValid(r));
@@ -1187,201 +1189,212 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
                             ),
                           ] else ...[
                             if (!_template.autoManagesRounds) ...[
-                            // --- REMOVE ROUND ---
-                            Expanded(
-                              child: TextButton.icon(
-                                icon: const Icon(
-                                  Icons.remove_circle_outline,
-                                  color: Colors.redAccent,
-                                  size: 18,
-                                ),
-                                label: const FittedBox(
-                                  child: Text(
-                                    "REMOVE ROUND",
-                                    style: TextStyle(
-                                      color: Colors.redAccent,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                              // --- REMOVE ROUND ---
+                              Expanded(
+                                child: TextButton.icon(
+                                  icon: const Icon(
+                                    Icons.remove_circle_outline,
+                                    color: Colors.redAccent,
+                                    size: 18,
                                   ),
-                                ),
-                                onPressed: () async {
-                                  if (_rounds.length > 1) {
-                                    final roundToRemove = _rounds.last;
-                                    bool shouldRemove = true;
-
-                                    if (!_isRoundEmpty(roundToRemove)) {
-                                      shouldRemove =
-                                          await showDialog<bool>(
-                                            context: context,
-                                            builder: (ctx) => AlertDialog(
-                                              backgroundColor: const Color(
-                                                0xFF1E1E1E,
-                                              ),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(16),
-                                              ),
-                                              title: const Text(
-                                                "Remove Round?",
-                                                style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              content: const Text(
-                                                "This round already contains data. Are you sure you want to remove it?",
-                                                style: TextStyle(
-                                                  color: Colors.white70,
-                                                ),
-                                              ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () =>
-                                                      Navigator.pop(ctx, false),
-                                                  child: const Text(
-                                                    "Cancel",
-                                                    style: TextStyle(
-                                                      color: Colors.white54,
-                                                    ),
-                                                  ),
-                                                ),
-                                                ElevatedButton(
-                                                  style:
-                                                      ElevatedButton.styleFrom(
-                                                        backgroundColor:
-                                                            Colors.redAccent,
-                                                      ),
-                                                  onPressed: () =>
-                                                      Navigator.pop(ctx, true),
-                                                  child: const Text(
-                                                    "REMOVE",
-                                                    style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ) ??
-                                          false;
-                                    }
-
-                                    if (shouldRemove) {
-                                      setState(() {
-                                        _rounds.removeLast();
-                                        _template.onRoundRemoved(_rounds);
-                                        _isSynced = false;
-                                      });
-                                      _saveData();
-                                    }
-                                  }
-                                },
-                              ),
-                            ),
-                            // --- ADD ROUND ---
-                            Expanded(
-                              child: TextButton.icon(
-                                icon: const Icon(
-                                  Icons.add_circle_outline,
-                                  color: Colors.white,
-                                  size: 18,
-                                ),
-                                label: const FittedBox(
-                                  child: Text(
-                                    "ADD ROUND",
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                onPressed: () {
-                                  if (!_template.canAddRound(
-                                    _rounds,
-                                    _playerNames.length,
-                                    customSettings: _customSettings,
-                                  )) {
-                                    if (_template is SpadesTemplate &&
-                                        _rounds.isNotEmpty) {
-                                      final spades =
-                                          _template as SpadesTemplate;
-                                      if (!spades.isRoundMathValid(
-                                        _rounds.last,
-                                      )) {
-                                        SleekNotificationBanner.show(
-                                          "Invalid Hand Scores",
-                                          "The total tricks don't add up to exactly 13. Please check your bags and sets before adding a round.",
-                                          icon: Icons.calculate,
-                                          color: Colors.redAccent,
-                                        );
-                                        return;
-                                      }
-                                    }
-
-                                    SleekNotificationBanner.show(
-                                      "Incomplete Round",
-                                      "Please completely fill out the previous round before adding a new one.",
-                                      icon: Icons.warning_amber_rounded,
-                                      color: Colors.orangeAccent,
-                                    );
-                                    return;
-                                  }
-                                  setState(() {
-                                    _rounds.add(
-                                      _template.createNewRound(
-                                        _rounds.length + 1,
-                                        _playerNames.length,
+                                  label: const FittedBox(
+                                    child: Text(
+                                      "REMOVE ROUND",
+                                      style: TextStyle(
+                                        color: Colors.redAccent,
+                                        fontWeight: FontWeight.bold,
                                       ),
-                                    );
-                                    if (widget.gameType.toLowerCase() ==
-                                        'poker') {
-                                      int prevBuyIn = 2;
-                                      if (_rounds.length > 1) {
-                                        prevBuyIn =
-                                            int.tryParse(
-                                              _rounds[_rounds.length -
-                                                          2]['buyIn']
-                                                      ?.toString() ??
-                                                  '2',
+                                    ),
+                                  ),
+                                  onPressed: () async {
+                                    if (_rounds.length > 1) {
+                                      final roundToRemove = _rounds.last;
+                                      bool shouldRemove = true;
+
+                                      if (!_isRoundEmpty(roundToRemove)) {
+                                        shouldRemove =
+                                            await showDialog<bool>(
+                                              context: context,
+                                              builder: (ctx) => AlertDialog(
+                                                backgroundColor: const Color(
+                                                  0xFF1E1E1E,
+                                                ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(16),
+                                                ),
+                                                title: const Text(
+                                                  "Remove Round?",
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                content: const Text(
+                                                  "This round already contains data. Are you sure you want to remove it?",
+                                                  style: TextStyle(
+                                                    color: Colors.white70,
+                                                  ),
+                                                ),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.pop(
+                                                          ctx,
+                                                          false,
+                                                        ),
+                                                    child: const Text(
+                                                      "Cancel",
+                                                      style: TextStyle(
+                                                        color: Colors.white54,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  ElevatedButton(
+                                                    style:
+                                                        ElevatedButton.styleFrom(
+                                                          backgroundColor:
+                                                              Colors.redAccent,
+                                                        ),
+                                                    onPressed: () =>
+                                                        Navigator.pop(
+                                                          ctx,
+                                                          true,
+                                                        ),
+                                                    child: const Text(
+                                                      "REMOVE",
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ) ??
-                                            2;
+                                            false;
                                       }
-                                      _rounds.last['buyIn'] = prevBuyIn;
+
+                                      if (shouldRemove) {
+                                        setState(() {
+                                          _rounds.removeLast();
+                                          _template.onRoundRemoved(_rounds);
+                                          _isSynced = false;
+                                        });
+                                        _saveData();
+                                      }
                                     }
-                                    _template.recalculateTotals(
+                                  },
+                                ),
+                              ),
+                              // --- ADD ROUND ---
+                              Expanded(
+                                child: TextButton.icon(
+                                  icon: const Icon(
+                                    Icons.add_circle_outline,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                  label: const FittedBox(
+                                    child: Text(
+                                      "ADD ROUND",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  onPressed: () {
+                                    if (!_template.canAddRound(
                                       _rounds,
                                       _playerNames.length,
                                       customSettings: _customSettings,
-                                    );
-                                    _isSynced = false;
-                                  });
-                                  _saveData();
-                                },
+                                    )) {
+                                      if (_template is SpadesTemplate &&
+                                          _rounds.isNotEmpty) {
+                                        final spades =
+                                            _template as SpadesTemplate;
+                                        if (!spades.isRoundMathValid(
+                                          _rounds.last,
+                                        )) {
+                                          SleekNotificationBanner.show(
+                                            "Invalid Hand Scores",
+                                            "The total tricks don't add up to exactly 13. Please check your bags and sets before adding a round.",
+                                            icon: Icons.calculate,
+                                            color: Colors.redAccent,
+                                          );
+                                          return;
+                                        }
+                                      }
+
+                                      SleekNotificationBanner.show(
+                                        "Incomplete Round",
+                                        "Please completely fill out the previous round before adding a new one.",
+                                        icon: Icons.warning_amber_rounded,
+                                        color: Colors.orangeAccent,
+                                      );
+                                      return;
+                                    }
+                                    setState(() {
+                                      _rounds.add(
+                                        _template.createNewRound(
+                                          _rounds.length + 1,
+                                          _playerNames.length,
+                                        ),
+                                      );
+                                      if (widget.gameType.toLowerCase() ==
+                                          'poker') {
+                                        int prevBuyIn = 2;
+                                        if (_rounds.length > 1) {
+                                          prevBuyIn =
+                                              int.tryParse(
+                                                _rounds[_rounds.length -
+                                                            2]['buyIn']
+                                                        ?.toString() ??
+                                                    '2',
+                                              ) ??
+                                              2;
+                                        }
+                                        _rounds.last['buyIn'] = prevBuyIn;
+                                      }
+                                      _template.recalculateTotals(
+                                        _rounds,
+                                        _playerNames.length,
+                                        customSettings: _customSettings,
+                                      );
+                                      _isSynced = false;
+                                    });
+                                    _saveData();
+                                  },
+                                ),
                               ),
-                            ),
                             ],
                             // --- FINALIZE GAME ---
                             Expanded(
                               child: Builder(
                                 builder: (context) {
-                                  bool canFinalize = _template.isReadyToFinalize(
-                                    _rounds,
-                                    _playerNames.length,
-                                    customSettings: _customSettings,
-                                  );
+                                  bool canFinalize = _template
+                                      .isReadyToFinalize(
+                                        _rounds,
+                                        _playerNames.length,
+                                        customSettings: _customSettings,
+                                      );
                                   return TextButton.icon(
                                     icon: Icon(
                                       Icons.check_circle,
-                                      color: canFinalize ? customPurple : Colors.white24,
+                                      color: canFinalize
+                                          ? customPurple
+                                          : Colors.white24,
                                       size: 18,
                                     ),
                                     label: FittedBox(
                                       child: Text(
                                         "FINALIZE",
                                         style: TextStyle(
-                                          color: canFinalize ? customPurple : Colors.white24,
+                                          color: canFinalize
+                                              ? customPurple
+                                              : Colors.white24,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),

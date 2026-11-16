@@ -3,6 +3,32 @@
 All notable changes to this project are listed here, newest first.
 Versions follow [Semantic Versioning](https://semver.org): **major** for redesigns, **minor** for new features, **patch** for fixes.
 
+## [1.0.0] — 2026-11-15
+
+### Added
+- "Invite with a link" for local players: the person opens the link, signs in or makes an account, and takes the player's place in the group along with their past games
+- Redesigned stats screen (Average Score, Win Rate): range picker, headline numbers with a comparison to the previous period, a chart of every game with a rolling average, a score-spread chart, and a games list that opens 10 at a time
+- Premium beta, a developer testing mode switched on per account from Axis Optic, for trying features before they're released to everyone; custom templates (template builder, saved templates and rulebook scanner) are behind it for now, and premium beta accounts see a small "Premium beta" note in Settings
+- Database rules that only let premium beta accounts save templates
+- Tests for premium beta and the stats screen
+
+### Changed
+- Sign-in page: the form sits in a compact, rounded card on the tinted background, matching the rest of the website
+- App icons: a rounded square on the website and desktop, a circle on Android, and a full square on iPhone
+- Folding the website sidebar is smooth, and the page content glides with it
+- Website pages switch instantly instead of sliding in from the side
+- Invite links point to scorecards.axisoptic.com
+- The website's version file can be read by the Optic dashboard
+- Cloud Functions run on Node.js 22, and the Optic admin endpoint only accepts calls from Optic
+
+### Fixed
+- Metrics freezing for a few seconds when opened with lots of games (now about 0.2 seconds)
+- A brief flash of the wrong page when switching pages from the sidebar
+- Overflow errors in the group member pop-up on phones
+- A white strip around the bottom gesture bar in Android Chrome
+- The Home greeting showing "Player" right after making a new account
+- The version shown in Settings
+
 ## [0.2.0] — 2026-11-13
 
 ### Added
@@ -30,5 +56,6 @@ Versions follow [Semantic Versioning](https://semver.org): **major** for redesig
 - Game groups and invitations
 - Feature-first project structure
 
+[1.0.0]: https://github.com/jdball5555/scorecards-app/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/jdball5555/scorecards-app/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jdball5555/scorecards-app/releases/tag/v0.1.0

@@ -1,5 +1,9 @@
-import 'dart:math';
+import 'dart:math' as math;
+
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+
+import '../../../core/layout/responsive.dart';
 import '../../../core/shared_widgets/gradient_background.dart';
 import 'package:scorecards_app/core/shared_widgets/top_bar_background.dart';
 
@@ -11,6 +15,32 @@ class MetricDataPoint {
   MetricDataPoint({required this.date, required this.value, this.subtitle});
 }
 
+const _kAccent = Color(0xFF00A2FF);
+const _kGood = Color(0xFF54A27E);
+const _kBad = Color(0xFFD26A74);
+const _kCard = Color(0x1AFFFFFF);
+const _kCardEdge = Color(0x14FFFFFF);
+const _kMuted = Color(0x8CFFFFFF);
+const _kFaint = Color(0x4DFFFFFF);
+
+const _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/// One metric for one player over time (e.g. Yahtzee average score, Spades
+/// win rate): headline numbers, a chart of every game with a rolling
+/// average, how the scores spread out, and the games themselves.
 class SpecificMetricScreen extends StatefulWidget {
   final String title;
   final String playerName;
@@ -20,6 +50,8 @@ class SpecificMetricScreen extends StatefulWidget {
   final String scopeDisplay;
   final String gameTypeDisplay;
   final String playerDisplay;
+
+  /// Kept for the callers; scores and the average now share one chart.
   final bool showIndividualScoresToggle;
 
   const SpecificMetricScreen({
@@ -39,325 +71,95 @@ class SpecificMetricScreen extends StatefulWidget {
   State<SpecificMetricScreen> createState() => _SpecificMetricScreenState();
 }
 
+/// A range the user can pick: the last N games, or the last stretch of time.
+class _Range {
+  final String label;
+  final int? games;
+  final Duration? span;
+  const _Range(this.label, {this.games, this.span});
+  bool get isAll => games == null && span == null;
+}
+
 class _SpecificMetricScreenState extends State<SpecificMetricScreen> {
-  String _selectedRange = 'All';
-  String _filterMode = 'Time';
-  List<String> _timeRanges = [];
-  List<String> _gameRanges = [];
-  int? _scrubIndex;
-  bool _showIndividualScores = false;
+  late final List<MetricDataPoint> _all; // oldest first
+  late final List<_Range> _ranges;
+  late _Range _range;
+
+  /// Win/loss style data (every value 0 or 100): shown as a win rate.
+  late final bool _isWinLoss;
+
+  // The games list starts closed and opens a page at a time.
+  static const _gamesPage = 10;
+  bool _gamesOpen = false;
+  int _gamesShown = _gamesPage;
 
   @override
   void initState() {
     super.initState();
-    _calculateRanges();
-  }
+    _all = List.of(widget.dataPoints)..sort((a, b) => a.date.compareTo(b.date));
+    _isWinLoss =
+        _all.isNotEmpty && _all.every((d) => d.value == 0 || d.value == 100);
 
-  void _calculateRanges() {
-    if (widget.dataPoints.isEmpty) {
-      _timeRanges = ['All'];
-      _gameRanges = ['All'];
-      return;
-    }
-
-    final sorted = List<MetricDataPoint>.from(widget.dataPoints)
-      ..sort((a, b) => a.date.compareTo(b.date));
-
-    final count = sorted.length;
-    final spanDays = sorted.last.date.difference(sorted.first.date).inDays;
-
-    List<String> g = [];
-    if (count >= 10) g.add('10 Games');
-    if (count >= 25) g.add('25 Games');
-    if (count >= 50) g.add('50 Games');
-    if (count >= 100) g.add('100 Games');
-    g.add('All');
-
-    List<String> t = [];
-    if (spanDays >= 7) t.add('1W');
-    if (spanDays >= 30) t.add('1M');
-    if (spanDays >= 90) t.add('3M');
-    if (spanDays >= 180) t.add('6M');
-    if (spanDays >= 365) t.add('1Y');
-    t.add('All');
-
-    _timeRanges = t;
-    _gameRanges = g;
-  }
-
-  String _formatDate(DateTime date) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
+    final n = _all.length;
+    final spanDays = n < 2
+        ? 0
+        : _all.last.date.difference(_all.first.date).inDays;
+    _ranges = [
+      for (final g in const [10, 25, 50, 100])
+        if (n > g) _Range('Last $g', games: g),
+      for (final (label, days) in const [
+        ('1W', 7),
+        ('1M', 30),
+        ('3M', 91),
+        ('6M', 182),
+        ('1Y', 365),
+      ])
+        if (spanDays > days) _Range(label, span: Duration(days: days)),
+      const _Range('All'),
     ];
-    return "${months[date.month - 1]} ${date.day}, ${date.year}";
+    _range = _ranges.last;
   }
 
-  void _handleScrub(Offset localPosition, double width, int dataLength) {
-    if (dataLength <= 1) return;
-    const double paddingRight = 32.0;
-    double stepX = (width - paddingRight) / (dataLength - 1);
-    int index = (localPosition.dx / stepX).round().clamp(0, dataLength - 1);
-    if (_scrubIndex != index) {
-      setState(() => _scrubIndex = index);
+  /// Index into [_all] where [range] starts.
+  int _startOf(_Range range) {
+    if (range.games != null) return math.max(0, _all.length - range.games!);
+    if (range.span != null) {
+      final cutoff = DateTime.now().subtract(range.span!);
+      final i = _all.indexWhere((d) => d.date.isAfter(cutoff));
+      return i == -1 ? _all.length : i;
     }
+    return 0;
   }
 
-  Widget _buildFilterChip(String label, bool isSelected, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFF00A2FF).withOpacity(0.15)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF00A2FF) : Colors.transparent,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? const Color(0xFF00A2FF) : Colors.white54,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-          ),
-        ),
-      ),
-    );
+  String _fmt(double v) {
+    if (_isWinLoss) return '${v.toStringAsFixed(0)}%';
+    final s = v == v.roundToDouble()
+        ? v.toStringAsFixed(0)
+        : v.toStringAsFixed(1);
+    return widget.unit.isEmpty ? s : '$s ${widget.unit}';
   }
 
-  TableRow _buildDataRow(
-    int index,
-    List<MetricDataPoint> fullListData,
-    List<double> lifetimeRunningAverages,
-    int startIndex,
-  ) {
-    final data = fullListData[index];
-    int origIdx = fullListData.length - 1 - index;
+  String _date(DateTime d, {bool year = true}) => year
+      ? '${_months[d.month - 1]} ${d.day}, ${d.year}'
+      : '${_months[d.month - 1]} ${d.day}';
 
-    bool isAllSelected = _selectedRange == 'All';
-    bool isInRange = origIdx >= startIndex;
-
-    double currentRunningAvg = lifetimeRunningAverages[origIdx];
-    double previousRunningAvg = origIdx > 0
-        ? lifetimeRunningAverages[origIdx - 1]
-        : 0.0;
-    double avgChange = origIdx > 0
-        ? (currentRunningAvg - previousRunningAvg)
-        : 0.0;
-
-    bool isAvgPositive = widget.isHigherBetter
-        ? avgChange >= 0
-        : avgChange <= 0;
-    Color avgTrendColor = isAvgPositive
-        ? const Color(0xFF54A27E)
-        : const Color(0xFFD26A74);
-
-    Color rowBg;
-    double textOp;
-    double subTextOp;
-
-    if (isAllSelected) {
-      rowBg = Colors.transparent;
-      textOp = 1.0;
-      subTextOp = 0.5;
-    } else if (isInRange) {
-      rowBg = Colors.white.withOpacity(0.03);
-      textOp = 1.0;
-      subTextOp = 0.5;
-    } else {
-      rowBg = Colors.transparent;
-      textOp = 0.3;
-      subTextOp = 0.15;
-    }
-
-    return TableRow(
-      decoration: BoxDecoration(
-        color: rowBg,
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withOpacity(0.05), width: 1),
-        ),
-      ),
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(
-            left: 24.0,
-            right: 24.0,
-            top: 16.0,
-            bottom: 16.0,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _formatDate(data.date),
-                style: TextStyle(
-                  color: Colors.white.withOpacity(textOp),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (data.subtitle != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  data.subtitle!,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(subTextOp),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(right: 24.0, top: 16.0, bottom: 16.0),
-          child: Text(
-            data.value.toStringAsFixed(0),
-            style: TextStyle(
-              color: Colors.white.withOpacity(textOp),
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(right: 24.0, top: 16.0, bottom: 16.0),
-          child: Text(
-            currentRunningAvg.toStringAsFixed(1),
-            style: TextStyle(
-              color: Colors.white.withOpacity(textOp),
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-        if (!isAllSelected)
-          Padding(
-            padding: const EdgeInsets.only(top: 16.0, bottom: 16.0),
-            child: Text(
-              (origIdx > 0 && avgChange != 0)
-                  ? "${avgChange > 0 ? '+' : ''}${avgChange.toStringAsFixed(1)}"
-                  : "-",
-              style: TextStyle(
-                color: (origIdx > 0 && avgChange != 0)
-                    ? avgTrendColor.withOpacity(textOp)
-                    : Colors.white.withOpacity(subTextOp),
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
+  double _avg(Iterable<MetricDataPoint> xs) =>
+      xs.isEmpty ? 0 : xs.fold<double>(0, (s, d) => s + d.value) / xs.length;
 
   @override
   Widget build(BuildContext context) {
-    List<MetricDataPoint> allDataSorted = List.from(widget.dataPoints)
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final start = _startOf(_range);
+    final shown = _all.sublist(start);
+    final avg = _avg(shown);
 
-    List<MetricDataPoint> fullListData = allDataSorted.reversed.toList();
-
-    DateTime now = DateTime.now();
-    DateTime? cutoff;
-    if (!_selectedRange.endsWith('Games')) {
-      switch (_selectedRange) {
-        case '1W':
-          cutoff = now.subtract(const Duration(days: 7));
-          break;
-        case '1M':
-          cutoff = DateTime(now.year, now.month - 1, now.day);
-          break;
-        case '3M':
-          cutoff = DateTime(now.year, now.month - 3, now.day);
-          break;
-        case '6M':
-          cutoff = DateTime(now.year, now.month - 6, now.day);
-          break;
-        case '1Y':
-          cutoff = DateTime(now.year - 1, now.month, now.day);
-          break;
-        case 'All':
-        default:
-          cutoff = null;
-          break;
-      }
+    // Compared with the same number of games right before this range.
+    double? previousAvg;
+    if (!_range.isAll && start > 0 && shown.isNotEmpty) {
+      final from = math.max(0, start - shown.length);
+      previousAvg = _avg(_all.sublist(from, start));
     }
 
-    int startIndex = 0;
-    if (_selectedRange.endsWith('Games')) {
-      int numGames = int.tryParse(_selectedRange.split(' ')[0]) ?? 0;
-      if (numGames > 0 && allDataSorted.length > numGames) {
-        startIndex = allDataSorted.length - numGames;
-      }
-    } else if (cutoff != null) {
-      startIndex = allDataSorted.indexWhere((d) => d.date.isAfter(cutoff!));
-      if (startIndex == -1) startIndex = allDataSorted.length;
-    }
-
-    List<MetricDataPoint> filteredData = allDataSorted.sublist(startIndex);
-
-    List<double> lifetimeRunningAverages = [];
-    double sum = 0;
-    for (int i = 0; i < allDataSorted.length; i++) {
-      sum += allDataSorted[i].value;
-      lifetimeRunningAverages.add(sum / (i + 1));
-    }
-
-    List<double> filteredRunningAverages = lifetimeRunningAverages.sublist(
-      startIndex,
-    );
-
-    List<MetricDataPoint> activeData = filteredData;
-    if (_scrubIndex != null && _scrubIndex! < filteredData.length) {
-      activeData = filteredData.sublist(0, _scrubIndex! + 1);
-    }
-
-    double currentAverage = 0;
-    double previousAverage = 0;
-    double change = 0;
-    double percentChange = 0;
-
-    if (activeData.isNotEmpty) {
-      currentAverage =
-          activeData.fold<double>(0.0, (s, item) => s + item.value) /
-          activeData.length;
-
-      if (activeData.length > 1) {
-        int midPoint = activeData.length ~/ 2;
-        var firstHalf = activeData.sublist(0, midPoint);
-        if (firstHalf.isNotEmpty) {
-          previousAverage =
-              firstHalf.fold<double>(0.0, (s, item) => s + item.value) /
-              firstHalf.length;
-          change = currentAverage - previousAverage;
-          percentChange = previousAverage != 0
-              ? (change / previousAverage) * 100
-              : 0;
-        }
-      }
-    }
-
-    bool isPositiveTrend = widget.isHigherBetter ? change >= 0 : change <= 0;
-    Color trendColor = isPositiveTrend
-        ? const Color(0xFF54A27E)
-        : const Color(0xFFD26A74);
-
+    final side = readableSide(context, maxWidth: 920);
     return GradientBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -401,447 +203,894 @@ class _SpecificMetricScreenState extends State<SpecificMetricScreen> {
             ),
           ),
         ),
-        body: Padding(
-          padding: EdgeInsets.only(
-            top: MediaQuery.of(context).padding.top + kToolbarHeight + 40,
-          ),
-          child: Column(
-            children: [
-              // Header Stats Area
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24.0,
-                  vertical: 16.0,
+        body: _all.isEmpty
+            ? const Center(
+                child: Text(
+                  "No games recorded yet.",
+                  style: TextStyle(color: _kMuted),
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _scrubIndex == null ? "Average" : "Running Avg",
-                            style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            filteredData.isEmpty
-                                ? "No Data"
-                                : "${currentAverage.toStringAsFixed(1)}${widget.unit.isNotEmpty ? ' ${widget.unit}' : ''}",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 36,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          if (activeData.length > 1 && _selectedRange != 'All')
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  change >= 0
-                                      ? Icons.arrow_drop_up
-                                      : Icons.arrow_drop_down,
-                                  color: trendColor,
-                                  size: 24,
-                                ),
-                                Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(top: 2.0),
-                                    child: RichText(
-                                      text: TextSpan(
-                                        children: [
-                                          TextSpan(
-                                            text:
-                                                "${change.abs().toStringAsFixed(1)}${widget.unit.isNotEmpty ? ' ${widget.unit}' : ''} (${percentChange.abs().toStringAsFixed(1)}%) ",
-                                            style: TextStyle(
-                                              color: trendColor,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                          TextSpan(
-                                            text: "for selected period",
-                                            style: TextStyle(
-                                              color: Colors.white.withOpacity(
-                                                0.4,
-                                              ),
-                                              fontWeight: FontWeight.w500,
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-                    ),
-
-                    if (_showIndividualScores && filteredData.isNotEmpty)
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              "Game Score",
-                              style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "${filteredData[_scrubIndex ?? (filteredData.length - 1)].value.toStringAsFixed(0)}${widget.unit.isNotEmpty ? ' ${widget.unit}' : ''}",
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 36,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    if (widget.showIndividualScoresToggle)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          const Text(
-                            "Scores Graph",
-                            style: TextStyle(
-                              color: Colors.white54,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Switch(
-                            value: _showIndividualScores,
-                            activeColor: Colors.pinkAccent,
-                            activeTrackColor: Colors.pinkAccent.withOpacity(
-                              0.3,
-                            ),
-                            inactiveThumbColor: Colors.white54,
-                            inactiveTrackColor: Colors.white10,
-                            onChanged: (val) =>
-                                setState(() => _showIndividualScores = val),
-                          ),
-                        ],
-                      ),
-                  ],
+              )
+            : ListView(
+                padding: EdgeInsets.fromLTRB(
+                  side,
+                  MediaQuery.paddingOf(context).top + kToolbarHeight + 40 + 16,
+                  side,
+                  40,
                 ),
-              ),
-
-              // Unified Charts Area with Seamless Scrubber Line
-              Container(
-                width: double.infinity,
-                child: filteredData.isEmpty
-                    ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.only(top: 40),
+                children: [
+                  _RangePicker(
+                    ranges: _ranges,
+                    selected: _range,
+                    onSelected: (r) => setState(() {
+                      _range = r;
+                      _gamesShown = _gamesPage;
+                    }),
+                  ),
+                  const SizedBox(height: 16),
+                  if (shown.isEmpty)
+                    const _Card(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: Center(
                           child: Text(
-                            "Not enough data to graph",
-                            style: TextStyle(color: Colors.white24),
+                            "No games in this range.",
+                            style: TextStyle(color: _kMuted),
                           ),
                         ),
-                      )
-                    : LayoutBuilder(
-                        builder: (context, constraints) {
-                          double chartWidth = constraints.maxWidth;
-                          int dataLength = filteredData.length;
-                          double stepX = dataLength > 1
-                              ? (chartWidth - 32.0) / (dataLength - 1)
-                              : 0;
-
-                          return GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onLongPressStart: (details) => _handleScrub(
-                              details.localPosition,
-                              chartWidth,
-                              dataLength,
-                            ),
-                            onLongPressMoveUpdate: (details) => _handleScrub(
-                              details.localPosition,
-                              chartWidth,
-                              dataLength,
-                            ),
-                            onLongPressEnd: (_) =>
-                                setState(() => _scrubIndex = null),
-                            onLongPressUp: () =>
-                                setState(() => _scrubIndex = null),
-                            onLongPressCancel: () =>
-                                setState(() => _scrubIndex = null),
-                            child: Stack(
-                              children: [
-                                // Unified seamless vertical line
-                                if (_scrubIndex != null && dataLength > 0)
-                                  Positioned(
-                                    left: _scrubIndex! * stepX,
-                                    top:
-                                        40, // Aligns perfectly with the inner graph bounds
-                                    bottom: 20,
-                                    child: Container(
-                                      width: 1,
-                                      color: Colors.white.withOpacity(0.3),
-                                    ),
-                                  ),
-
-                                // The Charts
-                                Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      height: 220,
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.only(top: 20),
-                                      child: CustomPaint(
-                                        painter: _SleekChartPainter(
-                                          data: filteredRunningAverages,
-                                          lineColor: const Color(0xFF00A2FF),
-                                          selectedIndex: _scrubIndex,
-                                        ),
-                                      ),
-                                    ),
-                                    if (_showIndividualScores &&
-                                        filteredData.isNotEmpty) ...[
-                                      const SizedBox(height: 16),
-                                      SizedBox(
-                                        height: 100,
-                                        width: double.infinity,
-                                        child: CustomPaint(
-                                          painter: _SleekChartPainter(
-                                            data: filteredData
-                                                .map((d) => d.value)
-                                                .toList(),
-                                            lineColor: Colors.pinkAccent,
-                                            selectedIndex: _scrubIndex,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        },
                       ),
+                    )
+                  else ...[
+                    _buildStats(shown, avg, previousAvg),
+                    const SizedBox(height: 16),
+                    _Card(
+                      title: _isWinLoss ? 'Results by game' : 'Score by game',
+                      trailing: _Legend(
+                        windowLabel: 'Last ${_window(shown.length)} avg',
+                        averageLabel: 'Avg ${_fmt(avg)}',
+                        isWinLoss: _isWinLoss,
+                      ),
+                      child: _TrendChart(
+                        points: shown,
+                        average: avg,
+                        window: _window(shown.length),
+                        isWinLoss: _isWinLoss,
+                        isHigherBetter: widget.isHigherBetter,
+                        format: _fmt,
+                        date: _date,
+                      ),
+                    ),
+                    if (!_isWinLoss && shown.length >= 5) ...[
+                      const SizedBox(height: 16),
+                      _Card(
+                        title: 'How your scores spread',
+                        child: _SpreadChart(
+                          points: shown,
+                          average: avg,
+                          averageLabel: _fmt(avg),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    _buildGames(shown, avg),
+                  ],
+                ],
               ),
+      ),
+    );
+  }
 
-              const SizedBox(height: 24),
+  /// Rolling-average window: smooths noise without hiding the trend.
+  int _window(int n) => n <= 12 ? 3 : (n <= 40 ? 5 : 10);
 
-              // Range Selector Row
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
+  Widget _buildStats(
+    List<MetricDataPoint> shown,
+    double avg,
+    double? previousAvg,
+  ) {
+    Widget? trend;
+    if (previousAvg != null) {
+      final diff = avg - previousAvg;
+      final good = widget.isHigherBetter ? diff >= 0 : diff <= 0;
+      final color = diff == 0 ? _kMuted : (good ? _kGood : _kBad);
+      final what = _range.games != null
+          ? 'the ${shown.length} games before'
+          : 'the ${_range.label} before';
+      trend = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            diff > 0
+                ? Icons.trending_up
+                : (diff < 0 ? Icons.trending_down : Icons.trending_flat),
+            size: 16,
+            color: color,
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              diff == 0
+                  ? 'Same as $what'
+                  : '${diff > 0 ? '+' : '−'}${_fmt(diff.abs())} vs $what',
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final List<_Stat> stats;
+    if (_isWinLoss) {
+      final wins = shown.where((d) => d.value == 100).length;
+      stats = [
+        _Stat('Win rate', _fmt(avg), big: true, footer: trend),
+        _Stat('Wins', '$wins'),
+        _Stat('Losses', '${shown.length - wins}'),
+        _Stat('Games', '${shown.length}'),
+      ];
+    } else {
+      final best = shown.reduce(
+        (a, b) =>
+            (widget.isHigherBetter ? b.value > a.value : b.value < a.value)
+            ? b
+            : a,
+      );
+      final worst = shown.reduce(
+        (a, b) =>
+            (widget.isHigherBetter ? b.value < a.value : b.value > a.value)
+            ? b
+            : a,
+      );
+      stats = [
+        _Stat('Average', _fmt(avg), big: true, footer: trend),
+        _Stat('Best', _fmt(best.value), sub: _date(best.date)),
+        _Stat(
+          widget.isHigherBetter ? 'Lowest' : 'Highest',
+          _fmt(worst.value),
+          sub: _date(worst.date),
+        ),
+        _Stat('Games', '${shown.length}'),
+      ];
+    }
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Four across when there's room; otherwise the average on its own
+        // row and the rest beneath it.
+        if (box.maxWidth >= 640) {
+          return IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (int i = 0; i < stats.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 12),
+                  Expanded(flex: i == 0 ? 2 : 1, child: stats[i]),
+                ],
+              ],
+            ),
+          );
+        }
+        return Column(
+          children: [
+            SizedBox(width: double.infinity, child: stats.first),
+            const SizedBox(height: 12),
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (int i = 1; i < stats.length; i++) ...[
+                    if (i > 1) const SizedBox(width: 12),
+                    Expanded(child: stats[i]),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildGames(List<MetricDataPoint> shown, double avg) {
+    final newestFirst = shown.reversed.toList();
+    MetricDataPoint? best;
+    if (!_isWinLoss && shown.length > 1) {
+      best = shown.reduce(
+        (a, b) =>
+            (widget.isHigherBetter ? b.value > a.value : b.value < a.value)
+            ? b
+            : a,
+      );
+    }
+    final visible = math.min(_gamesShown, newestFirst.length);
+    final left = newestFirst.length - visible;
+
+    Widget row(int i) {
+      final p = newestFirst[i];
+      final diff = p.value - avg;
+      return _GameRow(
+        point: p,
+        date: _date(p.date),
+        value: _isWinLoss ? (p.value == 100 ? 'Win' : 'Loss') : _fmt(p.value),
+        delta: _isWinLoss ? null : diff,
+        deltaText: _isWinLoss
+            ? null
+            : diff.abs() < 0.05
+            ? 'avg'
+            : '${diff > 0 ? '+' : '−'}${diff.abs().toStringAsFixed(1)}',
+        isHigherBetter: widget.isHigherBetter,
+        isWin: _isWinLoss ? p.value == 100 : null,
+        isBest: identical(p, best),
+        last: i == visible - 1 && left == 0,
+      );
+    }
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: _kCard.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _kCardEdge),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header: tap to open or close the list.
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => setState(() {
+                _gamesOpen = !_gamesOpen;
+                _gamesShown = _gamesPage;
+              }),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
                 child: Row(
                   children: [
-                    // Dynamic Filter Chips
-                    Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        child: Row(
-                          children:
-                              (_filterMode == 'Time'
-                                      ? _timeRanges
-                                      : _gameRanges)
-                                  .map((range) {
-                                    return Padding(
-                                      padding: const EdgeInsets.only(
-                                        right: 8.0,
-                                      ),
-                                      child: _buildFilterChip(
-                                        range,
-                                        _selectedRange == range,
-                                        () {
-                                          setState(() {
-                                            _selectedRange = range;
-                                            _scrubIndex = null;
-                                          });
-                                        },
-                                      ),
-                                    );
-                                  })
-                                  .toList(),
+                    const Text(
+                      'GAMES',
+                      style: TextStyle(
+                        color: _kMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.3,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${newestFirst.length}',
+                        style: const TextStyle(
+                          color: _kMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
-
-                    // Thematic Separator
-                    Container(
-                      height: 24,
-                      width: 1,
-                      color: Colors.white24,
-                      margin: const EdgeInsets.symmetric(horizontal: 12),
+                    const Spacer(),
+                    Text(
+                      _gamesOpen ? 'Hide' : 'Show',
+                      style: const TextStyle(
+                        color: _kAccent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-
-                    // Time vs Games Toggle
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildFilterChip("Time", _filterMode == 'Time', () {
-                          setState(() {
-                            if (_filterMode != 'Time') {
-                              _filterMode = 'Time';
-                              if (!_timeRanges.contains(_selectedRange)) {
-                                _selectedRange = 'All';
-                              }
-                              _scrubIndex = null;
-                            }
-                          });
-                        }),
-                        const SizedBox(width: 6),
-                        _buildFilterChip("Games", _filterMode == 'Games', () {
-                          setState(() {
-                            if (_filterMode != 'Games') {
-                              _filterMode = 'Games';
-                              if (!_gameRanges.contains(_selectedRange)) {
-                                _selectedRange = 'All';
-                              }
-                              _scrubIndex = null;
-                            }
-                          });
-                        }),
-                      ],
+                    AnimatedRotation(
+                      turns: _gamesOpen ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: const Icon(
+                        Icons.keyboard_arrow_down,
+                        color: _kAccent,
+                        size: 20,
+                      ),
                     ),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 16),
-              const Divider(color: Colors.white12, height: 1),
-
-              // Game List & Header
-              Expanded(
-                child: fullListData.isEmpty
-                    ? Center(
-                        child: Text(
-                          "No games recorded.",
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.4),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: !_gamesOpen
+                ? const SizedBox(width: double.infinity)
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Divider(
+                        height: 1,
+                        color: Colors.white.withValues(alpha: 0.06),
+                      ),
+                      for (int i = 0; i < visible; i++) row(i),
+                      if (left > 0)
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: _kAccent,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: const RoundedRectangleBorder(),
+                          ),
+                          onPressed: () =>
+                              setState(() => _gamesShown += _gamesPage),
+                          child: Text(
+                            'Load ${math.min(_gamesPage, left)} more  ·  $left left',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                         ),
-                      )
-                    : ListView(
-                        padding: const EdgeInsets.only(top: 0, bottom: 40),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 0.0,
-                            ),
-                            child: Table(
-                              columnWidths: <int, TableColumnWidth>{
-                                0: const IntrinsicColumnWidth(),
-                                1: const IntrinsicColumnWidth(),
-                                2: const IntrinsicColumnWidth(),
-                                if (_selectedRange != 'All')
-                                  3: const IntrinsicColumnWidth(),
-                              },
-                              defaultVerticalAlignment:
-                                  TableCellVerticalAlignment.middle,
-                              children: [
-                                TableRow(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.only(
-                                        left: 24.0,
-                                        right: 24.0,
-                                        bottom: 16.0,
-                                        top: 16.0,
-                                      ),
-                                      child: Text(
-                                        "DATE",
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.3),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: 1.2,
-                                        ),
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.only(
-                                        right: 24.0,
-                                        bottom: 16.0,
-                                        top: 16.0,
-                                      ),
-                                      child: Text(
-                                        "SCORE",
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.3),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: 1.2,
-                                        ),
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.only(
-                                        right: 24.0,
-                                        bottom: 16.0,
-                                        top: 16.0,
-                                      ),
-                                      child: Text(
-                                        "AVERAGE",
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.3),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: 1.2,
-                                        ),
-                                      ),
-                                    ),
-                                    if (_selectedRange != 'All')
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                          bottom: 16.0,
-                                          top: 16.0,
-                                        ),
-                                        child: Text(
-                                          "+/-",
-                                          style: TextStyle(
-                                            color: Colors.white.withOpacity(
-                                              0.3,
-                                            ),
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: 1.2,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                for (
-                                  int index = 0;
-                                  index < fullListData.length;
-                                  index++
-                                )
-                                  _buildDataRow(
-                                    index,
-                                    fullListData,
-                                    lifetimeRunningAverages,
-                                    startIndex,
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pieces
+// ---------------------------------------------------------------------------
+
+class _Card extends StatelessWidget {
+  final String? title;
+  final Widget? trailing;
+  final Widget child;
+  final EdgeInsets padding = const EdgeInsets.all(16);
+
+  const _Card({this.title, this.trailing, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: _kCard.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _kCardEdge),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (title != null)
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                padding.left == 0 ? 16 : 0,
+                0,
+                padding.right == 0 ? 16 : 0,
+                12,
+              ),
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  final heading = Text(
+                    title!.toUpperCase(),
+                    style: const TextStyle(
+                      color: _kMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.3,
+                    ),
+                  );
+                  if (trailing == null) return heading;
+                  // Narrow: the legend goes under the title. Wide: beside it.
+                  if (box.maxWidth < 520) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [heading, const SizedBox(height: 8), trailing!],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      heading,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.topRight,
+                          child: trailing,
+                        ),
                       ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  final String label;
+  final String value;
+  final String? sub;
+  final Widget? footer;
+  final bool big;
+
+  const _Stat(
+    this.label,
+    this.value, {
+    this.sub,
+    this.footer,
+    this.big = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: big
+            ? _kAccent.withValues(alpha: 0.10)
+            : Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: big ? _kAccent.withValues(alpha: 0.35) : _kCardEdge,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: _kMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: big ? 34 : 22,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ),
+          if (sub != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              sub!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _kFaint, fontSize: 11),
+            ),
+          ],
+          if (footer != null) ...[const SizedBox(height: 6), footer!],
+        ],
+      ),
+    );
+  }
+}
+
+class _RangePicker extends StatelessWidget {
+  final List<_Range> ranges;
+  final _Range selected;
+  final ValueChanged<_Range> onSelected;
+
+  const _RangePicker({
+    required this.ranges,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _kCardEdge),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final r in ranges)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Material(
+                  color: identical(r, selected)
+                      ? _kAccent.withValues(alpha: 0.18)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => onSelected(r),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      child: Text(
+                        r.label,
+                        style: TextStyle(
+                          color: identical(r, selected) ? _kAccent : _kMuted,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Legend extends StatelessWidget {
+  final String windowLabel;
+  final String averageLabel;
+  final bool isWinLoss;
+  const _Legend({
+    required this.windowLabel,
+    required this.averageLabel,
+    required this.isWinLoss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget item(Widget mark, String text) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        mark,
+        const SizedBox(width: 5),
+        Text(text, style: const TextStyle(color: _kMuted, fontSize: 11)),
+      ],
+    );
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      alignment: WrapAlignment.end,
+      children: [
+        item(
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: isWinLoss ? _kGood : Colors.white70,
+              shape: BoxShape.circle,
+            ),
+          ),
+          isWinLoss ? 'Game' : 'Game score',
+        ),
+        item(Container(width: 14, height: 3, color: _kAccent), windowLabel),
+        item(
+          const SizedBox(
+            width: 14,
+            height: 3,
+            child: CustomPaint(painter: _DashPainter()),
+          ),
+          averageLabel,
+        ),
+      ],
+    );
+  }
+}
+
+/// Every game as a dot, a rolling average through them, and the range's
+/// average as a dashed line. Tap or hover a game for its details. Like
+/// Optimizer's charts, the line is brightest at the game you're on (the
+/// latest one otherwise) and fades away from it.
+class _TrendChart extends StatefulWidget {
+  final List<MetricDataPoint> points; // oldest first
+  final double average;
+  final int window;
+  final bool isWinLoss;
+  final bool isHigherBetter;
+  final String Function(double) format;
+  final String Function(DateTime, {bool year}) date;
+
+  const _TrendChart({
+    required this.points,
+    required this.average,
+    required this.window,
+    required this.isWinLoss,
+    required this.isHigherBetter,
+    required this.format,
+    required this.date,
+  });
+
+  @override
+  State<_TrendChart> createState() => _TrendChartState();
+}
+
+class _TrendChartState extends State<_TrendChart> {
+  int? _focus;
+
+  @override
+  void didUpdateWidget(_TrendChart old) {
+    super.didUpdateWidget(old);
+    if (old.points.length != widget.points.length) _focus = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final points = widget.points;
+    final window = widget.window;
+    final isWinLoss = widget.isWinLoss;
+    final average = widget.average;
+    final format = widget.format;
+    final date = widget.date;
+    final n = points.length;
+    final rolling = <double>[];
+    for (int i = 0; i < n; i++) {
+      final from = math.max(0, i - window + 1);
+      final slice = points.sublist(from, i + 1);
+      rolling.add(slice.fold<double>(0, (s, d) => s + d.value) / slice.length);
+    }
+
+    final values = points.map((d) => d.value);
+    final lo = values.reduce(math.min);
+    final hi = values.reduce(math.max);
+    double minY = isWinLoss ? -8 : lo;
+    double maxY = isWinLoss ? 108 : hi;
+    final step = isWinLoss ? 25.0 : _niceStep((hi - lo) / 4);
+    if (!isWinLoss) {
+      // A little headroom so dots at the top and bottom show whole.
+      final pad = math.max((hi - lo) * 0.06, step * 0.1);
+      minY = ((lo - pad) / step).floorToDouble() * step;
+      maxY = ((hi + pad) / step).ceilToDouble() * step;
+      if (lo >= 0 && minY < 0) minY = 0;
+      if (maxY <= minY) maxY = minY + step;
+    }
+
+    // Where the line is brightest: the game being looked at, else the latest.
+    final f = (_focus ?? n - 1).clamp(0, n - 1);
+    final fx = n == 1 ? 0.5 : (f + 0.5) / n;
+    double at(double d) => (fx + d).clamp(0.0, 1.0);
+
+    final spansYears = points.first.date.year != points.last.date.year;
+    final labelEvery = math.max(1, (n / 4).ceil());
+    final dotRadius = n > 60 ? 2.5 : (n > 25 ? 3.2 : 4.0);
+
+    return SizedBox(
+      height: 240,
+      child: LineChart(
+        LineChartData(
+          // Half a game of room each side, so the end dots show whole while
+          // everything stays clipped to the chart (no spilling out of the
+          // card while it animates to a new range).
+          minX: n == 1 ? -1 : -0.5,
+          maxX: n == 1 ? 1 : n - 0.5,
+          minY: minY,
+          maxY: maxY,
+          clipData: const FlClipData.all(),
+          gridData: FlGridData(
+            drawVerticalLine: false,
+            horizontalInterval: step,
+            getDrawingHorizontalLine: (_) => FlLine(
+              color: Colors.white.withValues(alpha: 0.07),
+              strokeWidth: 1,
+            ),
+          ),
+          borderData: FlBorderData(show: false),
+          titlesData: FlTitlesData(
+            topTitles: const AxisTitles(),
+            rightTitles: const AxisTitles(),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 44,
+                interval: step,
+                getTitlesWidget: (v, meta) {
+                  if (isWinLoss && (v < 0 || v > 100)) return const SizedBox();
+                  return SideTitleWidget(
+                    meta: meta,
+                    child: Text(
+                      isWinLoss ? '${v.toInt()}%' : _compact(v),
+                      style: const TextStyle(color: _kFaint, fontSize: 11),
+                    ),
+                  );
+                },
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 26,
+                interval: 1,
+                getTitlesWidget: (v, meta) {
+                  final i = v.round();
+                  if (v != i || i < 0 || i >= n) return const SizedBox();
+                  if (i % labelEvery != 0 && i != n - 1)
+                    return const SizedBox();
+                  // Skip a label that would crowd the last one.
+                  if (i != n - 1 && n - 1 - i < labelEvery / 2)
+                    return const SizedBox();
+                  final d = points[i].date;
+                  return SideTitleWidget(
+                    meta: meta,
+                    child: Text(
+                      spansYears
+                          ? "${_months[d.month - 1]} '${d.year % 100}"
+                          : date(d, year: false),
+                      style: const TextStyle(color: _kFaint, fontSize: 11),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          extraLinesData: ExtraLinesData(
+            horizontalLines: [
+              HorizontalLine(
+                y: average,
+                color: Colors.white.withValues(alpha: 0.35),
+                strokeWidth: 1,
+                dashArray: [4, 4],
+                // Its value is in the legend above the chart.
               ),
             ],
+          ),
+          lineBarsData: [
+            // The games (dots only).
+            LineChartBarData(
+              spots: [
+                for (int i = 0; i < n; i++)
+                  FlSpot(i.toDouble(), points[i].value),
+              ],
+              color: Colors.transparent,
+              barWidth: 0,
+              dotData: FlDotData(
+                show: true,
+                getDotPainter: (spot, _, _, _) {
+                  final Color c;
+                  if (isWinLoss) {
+                    c = spot.y == 100 ? _kGood : _kBad;
+                  } else {
+                    c = Colors.white.withValues(alpha: 0.7);
+                  }
+                  return FlDotCirclePainter(
+                    radius: dotRadius,
+                    color: c,
+                    strokeWidth: 0,
+                  );
+                },
+              ),
+            ),
+            // The rolling average.
+            LineChartBarData(
+              spots: [
+                for (int i = 0; i < n; i++) FlSpot(i.toDouble(), rolling[i]),
+              ],
+              isCurved: true,
+              curveSmoothness: 0.25,
+              preventCurveOverShooting: true,
+              barWidth: 3,
+              isStrokeCapRound: true,
+              // Bright where you're looking, fading away from it.
+              gradient: LinearGradient(
+                colors: [
+                  _kAccent.withValues(alpha: 0.25),
+                  _kAccent.withValues(alpha: 0.6),
+                  _kAccent,
+                  _kAccent.withValues(alpha: 0.6),
+                  _kAccent.withValues(alpha: 0.25),
+                ],
+                stops: [at(-0.5), at(-0.15), fx, at(0.15), at(0.5)],
+              ),
+              // A glowing dot on the line at that game.
+              dotData: FlDotData(
+                show: true,
+                checkToShowDot: (spot, _) => spot.x.round() == f,
+                getDotPainter: (_, _, _, _) => FlDotCirclePainter(
+                  radius: 4.5,
+                  color: Colors.white,
+                  strokeWidth: 5,
+                  strokeColor: _kAccent.withValues(alpha: 0.35),
+                ),
+              ),
+            ),
+          ],
+          lineTouchData: LineTouchData(
+            handleBuiltInTouches: true,
+            touchCallback: (event, response) {
+              final spots = response?.lineBarSpots;
+              final next =
+                  (!event.isInterestedForInteractions ||
+                      spots == null ||
+                      spots.isEmpty)
+                  ? null
+                  : spots.first.spotIndex;
+              if (next != _focus) setState(() => _focus = next);
+            },
+            getTouchedSpotIndicator: (bar, indexes) => [
+              for (final _ in indexes)
+                TouchedSpotIndicatorData(
+                  FlLine(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    strokeWidth: 1,
+                  ),
+                  FlDotData(
+                    getDotPainter: (_, _, _, _) => FlDotCirclePainter(
+                      radius: 5,
+                      color: Colors.white,
+                      strokeColor: _kAccent,
+                      strokeWidth: 2,
+                    ),
+                  ),
+                ),
+            ],
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipColor: (_) => const Color(0xF0151A26),
+              tooltipBorder: const BorderSide(color: Color(0x33FFFFFF)),
+              tooltipBorderRadius: BorderRadius.circular(10),
+              tooltipPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 8,
+              ),
+              fitInsideHorizontally: true,
+              fitInsideVertically: true,
+              maxContentWidth: 170,
+              getTooltipItems: (spots) => [
+                for (final s in spots)
+                  // One tooltip per game: attach it to the game's dot only.
+                  if (s.barIndex != 0)
+                    null
+                  else
+                    LineTooltipItem(
+                      '${date(points[s.spotIndex].date)}\n',
+                      const TextStyle(color: _kMuted, fontSize: 11),
+                      children: [
+                        TextSpan(
+                          text: isWinLoss
+                              ? (points[s.spotIndex].value == 100
+                                    ? 'Win'
+                                    : 'Loss')
+                              : format(points[s.spotIndex].value),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        TextSpan(
+                          text:
+                              '\nLast $window avg ${format(rolling[s.spotIndex])}',
+                          style: const TextStyle(
+                            color: _kAccent,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (points[s.spotIndex].subtitle != null)
+                          TextSpan(
+                            text: '\n${points[s.spotIndex].subtitle}',
+                            style: const TextStyle(
+                              color: _kMuted,
+                              fontSize: 11,
+                            ),
+                          ),
+                      ],
+                    ),
+              ],
+            ),
           ),
         ),
       ),
@@ -849,118 +1098,278 @@ class _SpecificMetricScreenState extends State<SpecificMetricScreen> {
   }
 }
 
-class _SleekChartPainter extends CustomPainter {
-  final List<double> data;
-  final Color lineColor;
-  final int? selectedIndex;
-
-  _SleekChartPainter({
-    required this.data,
-    required this.lineColor,
-    this.selectedIndex,
+/// How often scores land in each band: the count sits right on top of
+/// each bar, and the band holding your average is highlighted.
+class _SpreadChart extends StatelessWidget {
+  final List<MetricDataPoint> points;
+  final double average;
+  final String averageLabel;
+  const _SpreadChart({
+    required this.points,
+    required this.average,
+    required this.averageLabel,
   });
 
   @override
+  Widget build(BuildContext context) {
+    final values = points.map((d) => d.value).toList();
+    final lo = values.reduce(math.min);
+    final hi = values.reduce(math.max);
+    var width = _niceStep((hi - lo) / 6);
+    if (width <= 0) width = 1;
+    final start = (lo / width).floorToDouble() * width;
+    final bins = math.max(1, ((hi - start) / width).floor() + 1);
+    final counts = List<int>.filled(bins, 0);
+    for (final v in values) {
+      counts[math.min(bins - 1, ((v - start) / width).floor())]++;
+    }
+    final avgBin = math.min(
+      bins - 1,
+      math.max(0, ((average - start) / width).floor()),
+    );
+    final maxCount = counts.reduce(math.max);
+    const barArea = 120.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: barArea + 44, // bar + the count above it
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (int i = 0; i < bins; i++)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${counts[i]}',
+                          style: TextStyle(
+                            color: counts[i] == 0
+                                ? _kFaint
+                                : (i == avgBin ? _kAccent : Colors.white),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOutCubic,
+                          height: counts[i] == 0
+                              ? 2
+                              : math.max(6, barArea * counts[i] / maxCount),
+                          constraints: const BoxConstraints(maxWidth: 56),
+                          decoration: BoxDecoration(
+                            color: i == avgBin
+                                ? _kAccent
+                                : Colors.white.withValues(alpha: 0.2),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(6),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            for (int i = 0; i < bins; i++)
+              Expanded(
+                child: Text(
+                  '${_compact(start + i * width)}–${_compact(start + (i + 1) * width)}',
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                  style: TextStyle(
+                    color: i == avgBin ? _kAccent : _kFaint,
+                    fontSize: 11,
+                    fontWeight: i == avgBin ? FontWeight.w700 : FontWeight.w400,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: _kAccent,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Games per score range. Your average ($averageLabel) is in the highlighted one.',
+                style: const TextStyle(color: _kMuted, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// A short dashed line, for the legend's "average" entry.
+class _DashPainter extends CustomPainter {
+  const _DashPainter();
+
+  @override
   void paint(Canvas canvas, Size size) {
-    if (data.isEmpty) return;
-
-    const double verticalPadding = 20.0;
-    const double paddingRight = 32.0;
-    final double drawableHeight = size.height - (verticalPadding * 2);
-
-    double maxVal = data.reduce((a, b) => a > b ? a : b);
-    double minVal = data.reduce((a, b) => a < b ? a : b);
-    double range = maxVal - minVal;
-    if (range == 0) range = 1.0;
-
-    Path linePath = Path();
-    Path fillPath = Path();
-
-    double stepX =
-        (size.width - paddingRight) / (data.length > 1 ? data.length - 1 : 1);
-
-    for (int i = 0; i < data.length; i++) {
-      double x = i * stepX;
-      double normalizedY = (data[i] - minVal) / range;
-      double y = size.height - verticalPadding - (normalizedY * drawableHeight);
-
-      if (i == 0) {
-        linePath.moveTo(x, y);
-        fillPath.moveTo(x, y);
-      } else {
-        linePath.lineTo(x, y);
-        fillPath.lineTo(x, y);
-      }
-    }
-
-    fillPath.lineTo(size.width, size.height);
-    fillPath.lineTo(0, size.height);
-    fillPath.close();
-
-    Paint fillPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [lineColor.withOpacity(0.4), lineColor.withOpacity(0.0)],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-    canvas.drawPath(fillPath, fillPaint);
-
-    Paint glowPaint = Paint()
-      ..color = lineColor.withOpacity(0.3)
-      ..strokeWidth = 4
-      ..style = PaintingStyle.stroke
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-    canvas.drawPath(linePath, glowPaint);
-
-    Paint linePaint = Paint()
-      ..color = lineColor
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-    canvas.drawPath(linePath, linePaint);
-
-    int dotIndex = selectedIndex ?? (data.length - 1);
-    double dotX = dotIndex * stepX;
-    double dotY =
-        size.height -
-        verticalPadding -
-        (((data[dotIndex] - minVal) / range) * drawableHeight);
-
-    if (selectedIndex != null) {
-      Paint intenseGlow = Paint()
-        ..color = lineColor.withOpacity(0.5)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16);
-      canvas.drawCircle(Offset(dotX, dotY), 24, intenseGlow);
-    }
-
-    Paint dotGlow = Paint()
-      ..color = lineColor.withOpacity(0.8)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
-    canvas.drawCircle(
-      Offset(dotX, dotY),
-      selectedIndex != null ? 10 : 8,
-      dotGlow,
-    );
-
-    Paint dotCenter = Paint()..color = Colors.white;
-    canvas.drawCircle(
-      Offset(dotX, dotY),
-      selectedIndex != null ? 5 : 4,
-      dotCenter,
-    );
-
-    if (selectedIndex != null) {
-      Paint dotBorder = Paint()
-        ..color = lineColor
-        ..strokeWidth = 3
-        ..style = PaintingStyle.stroke;
-      canvas.drawCircle(Offset(dotX, dotY), 6, dotBorder);
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.55)
+      ..strokeWidth = 1.5;
+    for (double x = 0; x < size.width; x += 6) {
+      canvas.drawLine(
+        Offset(x, size.height / 2),
+        Offset(math.min(x + 3, size.width), size.height / 2),
+        paint,
+      );
     }
   }
 
   @override
-  bool shouldRepaint(covariant _SleekChartPainter oldDelegate) {
-    return oldDelegate.data != data ||
-        oldDelegate.lineColor != lineColor ||
-        oldDelegate.selectedIndex != selectedIndex;
+  bool shouldRepaint(_DashPainter old) => false;
+}
+
+class _GameRow extends StatelessWidget {
+  final MetricDataPoint point;
+  final String date;
+  final String value;
+  final double? delta;
+  final String? deltaText;
+  final bool isHigherBetter;
+  final bool? isWin;
+  final bool isBest;
+  final bool last;
+
+  const _GameRow({
+    required this.point,
+    required this.date,
+    required this.value,
+    required this.delta,
+    required this.deltaText,
+    required this.isHigherBetter,
+    required this.isWin,
+    required this.isBest,
+    required this.last,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Color? chip;
+    if (isWin != null) {
+      chip = isWin! ? _kGood : _kBad;
+    } else if (delta != null && delta!.abs() >= 0.05) {
+      final good = isHigherBetter ? delta! > 0 : delta! < 0;
+      chip = good ? _kGood : _kBad;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(
+                bottom: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+              ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        date,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (isBest) ...[
+                      const SizedBox(width: 6),
+                      const Icon(Icons.star, size: 15, color: _kAccent),
+                    ],
+                  ],
+                ),
+                if (point.subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    point.subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: _kFaint, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          if (deltaText != null) ...[
+            const SizedBox(width: 10),
+            Container(
+              constraints: const BoxConstraints(minWidth: 54),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: (chip ?? Colors.white).withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                deltaText!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: chip ?? _kMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
+}
+
+/// A round step for axis labels (1, 2, 2.5, 5 × 10^n).
+double _niceStep(double raw) {
+  if (raw <= 0 || raw.isNaN) return 1;
+  final mag = math.pow(10, (math.log(raw) / math.ln10).floor()).toDouble();
+  final f = raw / mag;
+  final nice = f <= 1 ? 1 : (f <= 2 ? 2 : (f <= 2.5 ? 2.5 : (f <= 5 ? 5 : 10)));
+  return nice * mag;
+}
+
+String _compact(double v) {
+  if (v.abs() >= 1000) {
+    final k = v / 1000;
+    return '${k == k.roundToDouble() ? k.toStringAsFixed(0) : k.toStringAsFixed(1)}k';
+  }
+  return v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 }

@@ -25,13 +25,21 @@ class WavelengthTemplate extends GameTemplate {
   };
 
   @override
-  bool canAddRound(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) => true;
+  bool canAddRound(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) => true;
 
   @override
   void onRoundRemoved(List<Map<String, dynamic>> rounds) {}
 
   @override
-  bool isReadyToFinalize(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) {
+  bool isReadyToFinalize(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) {
     if (rounds.isEmpty) {
       return false;
     }
@@ -88,10 +96,11 @@ class WavelengthTemplate extends GameTemplate {
 
     for (var r in rounds) {
       for (int t = 0; t < teams; t++) {
-        int activeScore = int.tryParse(r['t${t + 1}Score']?.toString() ?? '') ?? 0;
+        int activeScore =
+            int.tryParse(r['t${t + 1}Score']?.toString() ?? '') ?? 0;
         int totalScore = _getTeamRoundScore(t, r, teams);
         int bonus = totalScore - activeScore;
-        
+
         if (bonus > 0) {
           r['t${t + 1}bonus'] = bonus;
         } else {
@@ -228,14 +237,21 @@ class WavelengthTemplate extends GameTemplate {
     String p1 = playerNames[p1Idx];
     String p2 = playerNames[p2Idx];
 
-    String? firstGuesser = rounds.isNotEmpty ? rounds[0]['t${teamIndex + 1}Guesser'] : null;
-    String initialGuesser = firstGuesser != null && (firstGuesser == p1 || firstGuesser == p2)
+    String? firstGuesser = rounds.isNotEmpty
+        ? rounds[0]['t${teamIndex + 1}Guesser']
+        : null;
+    String initialGuesser =
+        firstGuesser != null && (firstGuesser == p1 || firstGuesser == p2)
         ? firstGuesser
         : p1;
     String initialClueGiver = initialGuesser == p1 ? p2 : p1;
 
-    String currentClueGiver = roundIndex % 2 == 0 ? initialClueGiver : initialGuesser;
-    String currentGuesser = roundIndex % 2 == 0 ? initialGuesser : initialClueGiver;
+    String currentClueGiver = roundIndex % 2 == 0
+        ? initialClueGiver
+        : initialGuesser;
+    String currentGuesser = roundIndex % 2 == 0
+        ? initialGuesser
+        : initialClueGiver;
 
     showDialog(
       context: context,
@@ -448,9 +464,11 @@ class WavelengthTemplate extends GameTemplate {
                         return;
                       }
                     }
-                    
+
                     // Validation: Opponent Guesses
-                    if (teams > 1 && currentScore.isNotEmpty && currentScore != '4') {
+                    if (teams > 1 &&
+                        currentScore.isNotEmpty &&
+                        currentScore != '4') {
                       for (int t = 0; t < teams; t++) {
                         if (t != teamIndex && guesses[t] == null) {
                           SleekNotificationBanner.show(
@@ -464,7 +482,8 @@ class WavelengthTemplate extends GameTemplate {
                       }
                     }
 
-                    if (roundIndex == 0 && rounds[0]['t${teamIndex + 1}Guesser'] == null) {
+                    if (roundIndex == 0 &&
+                        rounds[0]['t${teamIndex + 1}Guesser'] == null) {
                       rounds[0]['t${teamIndex + 1}Guesser'] = currentGuesser;
                     }
 
@@ -565,18 +584,23 @@ class WavelengthTemplate extends GameTemplate {
 
       String p1Name = playerNames[p1Idx];
       String p2Name = playerNames[p2Idx];
-      List<String> validNames = [p1Name, p2Name].where((n) => !n.startsWith('Player ')).toList();
+      List<String> validNames = [
+        p1Name,
+        p2Name,
+      ].where((n) => !n.startsWith('Player ')).toList();
 
       String clueGiverKey = 'team_${t}_clueGiver';
       String guesserKey = 'team_${t}_guesser';
-      
+
       String? firstClueGiver = customSettings[clueGiverKey];
       if (firstClueGiver != null && !validNames.contains(firstClueGiver)) {
         firstClueGiver = null;
       }
 
       bool highlightError = showValidationError && firstClueGiver == null;
-      String? firstGuesser = firstClueGiver != null ? (firstClueGiver == p1Name ? p2Name : p1Name) : null;
+      String? firstGuesser = firstClueGiver != null
+          ? (firstClueGiver == p1Name ? p2Name : p1Name)
+          : null;
 
       teamSelectors.add(
         Padding(
@@ -625,23 +649,46 @@ class WavelengthTemplate extends GameTemplate {
                           isExpanded: true,
                           dropdownColor: const Color(0xFF2C2C2C),
                           hint: Text(
-                            highlightError ? "Required Selection" : "Select Player",
+                            highlightError
+                                ? "Required Selection"
+                                : "Select Player",
                             style: TextStyle(
-                              color: highlightError ? Colors.redAccent : Colors.white38,
+                              color: highlightError
+                                  ? Colors.redAccent
+                                  : Colors.white38,
                               fontSize: 13,
-                              fontWeight: highlightError ? FontWeight.bold : FontWeight.normal,
+                              fontWeight: highlightError
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
                             ),
                           ),
                           value: firstClueGiver,
-                          icon: const Icon(Icons.expand_more, color: Colors.white54, size: 20),
-                          items: validNames.map<DropdownMenuItem<String>>((p) => DropdownMenuItem<String>(
-                            value: p,
-                            child: Text(p, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                          )).toList(),
+                          icon: const Icon(
+                            Icons.expand_more,
+                            color: Colors.white54,
+                            size: 20,
+                          ),
+                          items: validNames
+                              .map<DropdownMenuItem<String>>(
+                                (p) => DropdownMenuItem<String>(
+                                  value: p,
+                                  child: Text(
+                                    p,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
                           onChanged: (val) {
                             if (val != null) {
                               onSettingsChanged(clueGiverKey, val);
-                              onSettingsChanged(guesserKey, val == p1Name ? p2Name : p1Name);
+                              onSettingsChanged(
+                                guesserKey,
+                                val == p1Name ? p2Name : p1Name,
+                              );
                             }
                           },
                         ),
@@ -664,7 +711,9 @@ class WavelengthTemplate extends GameTemplate {
                     child: Text(
                       firstGuesser ?? "---",
                       style: TextStyle(
-                        color: firstGuesser != null ? Colors.white : Colors.white38,
+                        color: firstGuesser != null
+                            ? Colors.white
+                            : Colors.white38,
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
                       ),
@@ -680,7 +729,8 @@ class WavelengthTemplate extends GameTemplate {
       );
     }
 
-    if (teamSelectors.length == 1) return null; // Wait until at least 1 team exists
+    if (teamSelectors.length == 1)
+      return null; // Wait until at least 1 team exists
 
     return Container(
       width: double.infinity,

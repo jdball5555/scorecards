@@ -19,13 +19,25 @@ abstract class GameTemplate {
 
   bool get autoManagesRounds => false;
 
-  bool canAddRound(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}});
-  bool isReadyToFinalize(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}});
+  bool canAddRound(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  });
+  bool isReadyToFinalize(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  });
   void onRoundRemoved(List<Map<String, dynamic>> rounds);
 
   /// Called after any data change. Templates can use this to auto-add rounds.
   /// Returns true if the rounds list was modified (so the caller should setState).
-  bool onDataUpdated(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) {
+  bool onDataUpdated(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) {
     return false;
   }
 
@@ -95,6 +107,7 @@ class TemplateFactory {
 
   static bool isOfficialTemplate(String type) {
     final t = getTemplate(type);
-    return t.runtimeType.toString() != 'StandardTemplate' && t.runtimeType.toString() != 'CustomTemplate';
+    return t.runtimeType.toString() != 'StandardTemplate' &&
+        t.runtimeType.toString() != 'CustomTemplate';
   }
 }

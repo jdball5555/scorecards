@@ -1,7 +1,7 @@
 name: scorecards_app
 description: "Score card and board games with friends: built-in and custom scorecards, groups and stats."
 publish_to: "none"
-version: 0.2.0+2
+version: 1.0.0+3
 
 environment:
   sdk: ^3.10.3
@@ -33,23 +33,33 @@ flutter:
   assets:
     - assets/branding/app_mark.png
     - assets/branding/app_logo.png
+    - assets/branding/app_mark_square.png
+    - assets/branding/app_logo_square.png
 
 flutter_launcher_icons:
-  android: "launcher_icon"
-  ios: true
+  # Phone app: a circle (Android's adaptive icon; launchers mask it round).
+  # Website and desktop: a rounded square, like Axis Team.
+  # Sources are made by the icon script from assets/icons/app_icon.png.
   image_path: "assets/icons/app_icon.png"
+  android: "launcher_icon"
+  image_path_android: "assets/icons/app_icon_round.png"
+  adaptive_icon_background: "#05050A"
+  adaptive_icon_foreground: "assets/icons/app_icon_android_foreground.png"
+  ios: true
+  # Full-bleed (no circle): iOS rounds the corners itself.
+  image_path_ios: "assets/icons/app_icon_square.png"
   remove_alpha_ios: true
   web:
     generate: true
-    image_path: "assets/icons/app_icon.png"
+    image_path: "assets/icons/app_icon_square.png"
     background_color: "#05050A"
     theme_color: "#05050A"
   macos:
     generate: true
-    image_path: "assets/icons/app_icon.png"
+    image_path: "assets/icons/app_icon_macos.png"
   windows:
     generate: true
-    image_path: "assets/icons/app_icon.png"
+    image_path: "assets/icons/app_icon_rounded.png"
     icon_size: 256
 
 flutter_native_splash:

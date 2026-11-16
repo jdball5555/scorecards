@@ -168,10 +168,7 @@ class _AiTemplateScanScreenState extends State<AiTemplateScanScreen> {
         ),
         onPressed: onTap,
         icon: Icon(icon, size: 20),
-        label: Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        label: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
     );
   }

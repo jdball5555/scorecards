@@ -4,8 +4,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'scorecard_setup.dart';
 import '../../../core/shared_widgets/game_request_link.dart';
 import '../scorecard_template_create/template_create_screen.dart';
+import 'package:scorecards_app/features/premium/premium_beta.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class ScorecardCreateDialog extends StatefulWidget {
+class ScorecardCreateDialog extends ConsumerStatefulWidget {
   final bool isTestMode;
   final Map<String, dynamic>? prelockedCustomSettings;
 
@@ -20,10 +22,11 @@ class ScorecardCreateDialog extends StatefulWidget {
   });
 
   @override
-  State<ScorecardCreateDialog> createState() => _ScorecardCreateDialogState();
+  ConsumerState<ScorecardCreateDialog> createState() =>
+      _ScorecardCreateDialogState();
 }
 
-class _ScorecardCreateDialogState extends State<ScorecardCreateDialog> {
+class _ScorecardCreateDialogState extends ConsumerState<ScorecardCreateDialog> {
   bool _isGroupGame = false;
   String? _selectedGroupId;
   String? _selectedGroupName;
@@ -91,14 +94,22 @@ class _ScorecardCreateDialogState extends State<ScorecardCreateDialog> {
             .doc(uid)
             .get();
 
-        // ADDED: Fetch Published Templates to populate the dropdown AND cache their settings
-        final templatesQuery = await FirebaseFirestore.instance
-            .collection('scorecard_templates')
-            .where('creatorId', isEqualTo: uid)
-            .where('isPublished', isEqualTo: true)
-            .get();
+        // Your own published templates (a premium beta feature): fill the
+        // dropdown and cache their settings.
+        final premium = await ref
+            .read(premiumBetaProvider.future)
+            .timeout(const Duration(seconds: 5), onTimeout: () => false)
+            .catchError((Object _) => false);
+        final templateDocs = premium
+            ? (await FirebaseFirestore.instance
+                      .collection('scorecard_templates')
+                      .where('creatorId', isEqualTo: uid)
+                      .where('isPublished', isEqualTo: true)
+                      .get())
+                  .docs
+            : const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
 
-        for (var tDoc in templatesQuery.docs) {
+        for (var tDoc in templateDocs) {
           final data = tDoc.data();
           final name = data['templateName'] as String?;
           if (name != null && !_templates.contains(name)) {
@@ -116,6 +127,10 @@ class _ScorecardCreateDialogState extends State<ScorecardCreateDialog> {
             if (!widget.isTestMode && widget.initialTemplate == null) {
               _selectedType = settings['selectedType'] ?? 'standard';
               _selectedTemplate = settings['selectedTemplate'] ?? 'Spades';
+              // "Create" (the template builder) needs premium beta.
+              if (_selectedType == 'custom' && !premium) {
+                _selectedType = 'standard';
+              }
             }
           }
           if (doc.data()?.containsKey('customGameNames') == true) {
@@ -170,6 +185,7 @@ class _ScorecardCreateDialogState extends State<ScorecardCreateDialog> {
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
+    final premium = hasPremiumBeta(ref);
 
     if (_isLoadingSettings) {
       return Dialog(
@@ -344,8 +360,11 @@ class _ScorecardCreateDialogState extends State<ScorecardCreateDialog> {
                     _buildToggleOption('Standard', 'standard', Icons.grid_on),
                     const SizedBox(width: 8),
                     _buildToggleOption('Template', 'template', Icons.style),
-                    const SizedBox(width: 8),
-                    _buildToggleOption('Create', 'custom', Icons.edit),
+                    // Building templates is a premium beta feature.
+                    if (premium) ...[
+                      const SizedBox(width: 8),
+                      _buildToggleOption('Create', 'custom', Icons.edit),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 16),

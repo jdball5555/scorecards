@@ -11,6 +11,8 @@ import '../../scorecards/pages/custom_scorecards_screen.dart';
 import '../../../core/layout/responsive.dart';
 import '../../../core/shared_widgets/game_request_link.dart';
 import 'package:scorecards_app/core/shared_widgets/top_bar_background.dart';
+import 'package:scorecards_app/features/premium/premium_beta.dart';
+import '../../auth/providers/auth_provider.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -97,7 +99,9 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = FirebaseAuth.instance.currentUser;
+    final user =
+        ref.watch(userProfileProvider).valueOrNull ??
+        FirebaseAuth.instance.currentUser;
     final firstName = user?.displayName?.split(' ').first ?? 'Player';
     final greeting = _getGreeting();
 
@@ -165,6 +169,7 @@ class HomeScreen extends ConsumerWidget {
         ),
       ),
     );
+    final premium = hasPremiumBeta(ref);
     final Widget customCard = // --- CUSTOM SCORECARD TEMPLATES TILE ---
     GlassCard(
       accentColor: const Color(0xFF7855C1), // Purple Theme
@@ -288,7 +293,18 @@ class HomeScreen extends ConsumerWidget {
 
             const SizedBox(height: 32),
 
-            if (wide)
+            // Custom templates are a premium beta feature.
+            if (!premium)
+              wide
+                  ? Row(
+                      children: [
+                        Expanded(child: startCard),
+                        const SizedBox(width: 20),
+                        const Spacer(),
+                      ],
+                    )
+                  : startCard
+            else if (wide)
               IntrinsicHeight(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,

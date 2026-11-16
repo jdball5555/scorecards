@@ -114,7 +114,6 @@ class _PlayableDataEntryDialogState extends State<PlayableDataEntryDialog> {
   /// display choice only (it used to be skipped when hidden, which made every
   /// multi-input cell score 0).
   void _recalculateScore({bool notify = true}) {
-
     int total = 0;
     for (int i = 0; i < _inputs.length; i++) {
       final input = _inputs[i];

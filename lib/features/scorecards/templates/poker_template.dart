@@ -199,7 +199,11 @@ class PokerTemplate extends GameTemplate {
   }
 
   @override
-  bool canAddRound(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) {
+  bool canAddRound(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) {
     if (rounds.isEmpty) return true;
     return _isRoundComplete(rounds.last);
   }
@@ -207,7 +211,11 @@ class PokerTemplate extends GameTemplate {
   final List<String> _phases = ['Pre-Flop', 'Flop', 'Turn', 'River'];
 
   @override
-  bool isReadyToFinalize(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) {
+  bool isReadyToFinalize(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) {
     if (rounds.isEmpty) return false;
     for (var r in rounds) {
       if (r['winner'] == null || r['winner'].toString().isEmpty) {

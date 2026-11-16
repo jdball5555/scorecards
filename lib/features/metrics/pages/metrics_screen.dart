@@ -382,11 +382,48 @@ class _MetricsScreenState extends State<MetricsScreen> {
     return filtered;
   }
 
+  // Each player's game lists, shared by every tile until the games or the
+  // filters change (filtering + sorting all games once per tile, several
+  // times over, was what made this page freeze).
+  final Map<String, _PlayerGames> _playerGamesCache = {};
+  Object? _playerGamesKey;
+
+  _PlayerGames _gamesFor(String player) {
+    final key = (
+      _allGames,
+      _globalGames,
+      _selectedScope,
+      _trendNumber,
+      _trendUnit,
+    );
+    if (key != _playerGamesKey) {
+      _playerGamesCache.clear();
+      _playerGamesKey = key;
+    }
+    return _playerGamesCache.putIfAbsent(player, () {
+      final base = _getBaseFilteredGames(player);
+      return _PlayerGames(
+        lifetime: base,
+        current: _getGamesForPeriod(
+          previous: false,
+          player: player,
+          base: base,
+        ),
+        previous: _getGamesForPeriod(
+          previous: true,
+          player: player,
+          base: base,
+        ),
+      );
+    });
+  }
+
   List<Map<String, dynamic>> _getGamesForPeriod({
     required bool previous,
     required String player,
+    List<Map<String, dynamic>>? base,
   }) {
-    final base = _getBaseFilteredGames(player);
+    base ??= _getBaseFilteredGames(player);
     if (_trendUnit == 'games') {
       if (!previous) {
         return base.take(_trendNumber).toList();
@@ -1083,9 +1120,10 @@ class _MetricsScreenState extends State<MetricsScreen> {
     List<PlayerMetricData> playersData = [];
 
     for (var p in players) {
-      final lifetimeGames = _getBaseFilteredGames(p);
-      final currentTrendGames = _getGamesForPeriod(previous: false, player: p);
-      final previousTrendGames = _getGamesForPeriod(previous: true, player: p);
+      final games = _gamesFor(p);
+      final lifetimeGames = games.lifetime;
+      final currentTrendGames = games.current;
+      final previousTrendGames = games.previous;
 
       playersData.add(
         provider.buildMetricData(
@@ -1116,7 +1154,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
             context,
             tileId,
             _selectedPlayer,
-            _getBaseFilteredGames(_selectedPlayer),
+            _gamesFor(_selectedPlayer).lifetime,
             _scopeDisplay(),
             _selectedGameType,
             compareSubtitle,
@@ -1316,4 +1354,15 @@ class _MetricsScreenState extends State<MetricsScreen> {
         ? animatedScaffold
         : GradientBackground(child: animatedScaffold);
   }
+}
+
+class _PlayerGames {
+  final List<Map<String, dynamic>> lifetime;
+  final List<Map<String, dynamic>> current;
+  final List<Map<String, dynamic>> previous;
+  const _PlayerGames({
+    required this.lifetime,
+    required this.current,
+    required this.previous,
+  });
 }

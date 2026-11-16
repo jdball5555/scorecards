@@ -3,12 +3,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/shared_widgets/gradient_background.dart';
 import '../../../core/shared_widgets/sleek_notification_banner.dart';
 import '../../../core/layout/responsive.dart';
+import '../../../core/shared_widgets/top_bar_background.dart';
+import '../../groups/player_invite.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -23,7 +26,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
 
   bool _isLoading = false;
-  bool _isSignUpMode = false;
+  // Opened from an invite link? Most of those people are new: start on
+  // "make an account".
+  late bool _isSignUpMode = ref.read(pendingInviteProvider) != null;
 
   // --- EMAIL LOGIN ---
   Future<void> _handleLogin() async {
@@ -344,6 +349,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget _buildForm(BuildContext context) {
     final theme = Theme.of(context);
     final creating = _isSignUpMode;
+    final invite = ref.watch(pendingInviteProvider);
     const spinner = SizedBox(
       height: 18,
       width: 18,
@@ -354,104 +360,108 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       creating ? _handleSignUp() : _handleLogin();
     }
 
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400),
-          child: AutofillGroup(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Image.asset(
-                    'assets/branding/app_logo.png',
-                    width: 56,
-                    height: 56,
-                    filterQuality: FilterQuality.high,
-                    semanticLabel: 'Scorecards',
-                  ),
+    // Sized to its content: the open card around it hugs the form.
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(40, 40, 40, 32),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380),
+        child: AutofillGroup(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Image.asset(
+                  // Rounded square on the website, circle in the app.
+                  kIsWeb
+                      ? 'assets/branding/app_logo_square.png'
+                      : 'assets/branding/app_logo.png',
+                  width: 56,
+                  height: 56,
+                  filterQuality: FilterQuality.high,
+                  semanticLabel: 'Scorecards',
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  'Scorecards',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    color: Colors.white,
-                  ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Scorecards',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  color: Colors.white,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  creating
-                      ? 'Create your Scorecards account'
-                      : 'Sign in to score your games',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: _secondaryText,
-                  ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                creating
+                    ? 'Create your Scorecards account'
+                    : 'Sign in to score your games',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: _secondaryText,
                 ),
-                const SizedBox(height: 28),
-                if (creating) ...[
-                  TextField(
-                    controller: _nameController,
-                    textCapitalization: TextCapitalization.words,
-                    autofillHints: const [AutofillHints.name],
-                    decoration: const InputDecoration(labelText: 'Your name'),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  autofillHints: const [AutofillHints.email],
-                  decoration: const InputDecoration(labelText: 'Email'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  autofillHints: [
-                    creating
-                        ? AutofillHints.newPassword
-                        : AutofillHints.password,
-                  ],
-                  decoration: InputDecoration(
-                    labelText: creating ? 'Choose a password' : 'Password',
-                  ),
-                  onSubmitted: (_) => submit(),
-                ),
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: _isLoading ? null : submit,
-                  child: _isLoading
-                      ? spinner
-                      : Text(creating ? 'Create account' : 'Sign in'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _isLoading ? null : _handleGoogleSignIn,
-                  icon: const Icon(Icons.account_circle_outlined),
-                  label: Text(
-                    creating ? 'Sign up with Google' : 'Continue with Google',
-                  ),
-                ),
-                if (!creating)
-                  TextButton(
-                    onPressed: _isLoading ? null : _handleForgotPassword,
-                    child: const Text('Forgot password'),
-                  ),
-                TextButton(
-                  onPressed: _isLoading
-                      ? null
-                      : () => setState(() => _isSignUpMode = !_isSignUpMode),
-                  child: Text(
-                    creating
-                        ? 'I already have an account'
-                        : 'New here? Make an account',
-                  ),
-                ),
+              ),
+              if (invite != null) ...[
+                const SizedBox(height: 16),
+                _InviteNote(invite),
               ],
-            ),
+              const SizedBox(height: 28),
+              if (creating) ...[
+                TextField(
+                  controller: _nameController,
+                  textCapitalization: TextCapitalization.words,
+                  autofillHints: const [AutofillHints.name],
+                  decoration: const InputDecoration(labelText: 'Your name'),
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const [AutofillHints.email],
+                decoration: const InputDecoration(labelText: 'Email'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                autofillHints: [
+                  creating ? AutofillHints.newPassword : AutofillHints.password,
+                ],
+                decoration: InputDecoration(
+                  labelText: creating ? 'Choose a password' : 'Password',
+                ),
+                onSubmitted: (_) => submit(),
+              ),
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: _isLoading ? null : submit,
+                child: _isLoading
+                    ? spinner
+                    : Text(creating ? 'Create account' : 'Sign in'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _isLoading ? null : _handleGoogleSignIn,
+                icon: const Icon(Icons.account_circle_outlined),
+                label: Text(
+                  creating ? 'Sign up with Google' : 'Continue with Google',
+                ),
+              ),
+              if (!creating)
+                TextButton(
+                  onPressed: _isLoading ? null : _handleForgotPassword,
+                  child: const Text('Forgot password'),
+                ),
+              TextButton(
+                onPressed: _isLoading
+                    ? null
+                    : () => setState(() => _isSignUpMode = !_isSignUpMode),
+                child: Text(
+                  creating
+                      ? 'I already have an account'
+                      : 'New here? Make an account',
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -465,19 +475,107 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       child: Builder(builder: _buildForm),
     );
 
+    final wide = isWideLayout(context);
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: GradientBackground(
-        child: SafeArea(
-          child: isWideLayout(context)
-              ? Row(
-                  children: [
-                    const Expanded(child: _LoginHero()),
-                    Expanded(child: form),
-                  ],
-                )
-              : form,
+        child: _LoginFrame(
+          wide: wide,
+          hero: wide ? const _LoginHero() : null,
+          panel: form,
         ),
       ),
+    );
+  }
+}
+
+/// The site's look on the sign-in page: everything is the tinted black frame
+/// (like the sidebar and top bars), and the form sits in a rounded "open"
+/// card that shows the background, like the pages inside the app. The card
+/// is just big enough for the form.
+class _LoginFrame extends StatelessWidget {
+  final bool wide;
+  final Widget? hero;
+  final Widget panel;
+
+  const _LoginFrame({
+    required this.wide,
+    required this.hero,
+    required this.panel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final card = Padding(
+      padding: EdgeInsets.all(wide ? 32 : 16),
+      child: _OpenCard(
+        child: MediaQuery.removePadding(
+          context: context,
+          removeTop: true,
+          removeBottom: true,
+          removeLeft: true,
+          removeRight: true,
+          child: panel,
+        ),
+      ),
+    );
+    return SafeArea(
+      child: wide
+          // Right-to-left so the card (on the right) paints first and the
+          // pitch paints over the tint it draws.
+          ? Row(
+              textDirection: TextDirection.rtl,
+              children: [
+                Expanded(child: Center(child: card)),
+                Expanded(child: hero ?? const SizedBox()),
+              ],
+            )
+          : Center(child: card),
+    );
+  }
+}
+
+/// A rounded card that leaves the background clear inside and tints
+/// everything outside it (the whole screen), with a thin edge.
+class _OpenCard extends SingleChildRenderObjectWidget {
+  const _OpenCard({required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderOpenCard();
+}
+
+class _RenderOpenCard extends RenderProxyBox {
+  static const double radius = 24;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final rect = offset & size;
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(radius));
+    // Even-odd fill: a huge rectangle minus the card, so everything around
+    // the card is tinted and the card itself stays clear.
+    context.canvas.drawPath(
+      Path()
+        ..fillType = PathFillType.evenOdd
+        ..addRect(rect.inflate(20000))
+        ..addRRect(rrect),
+      Paint()..color = kTopBarTint,
+    );
+    context.pushClipRRect(
+      needsCompositing,
+      offset,
+      Offset.zero & size,
+      RRect.fromRectAndRadius(
+        Offset.zero & size,
+        const Radius.circular(radius),
+      ),
+      super.paint,
+    );
+    context.canvas.drawRRect(
+      rrect.deflate(0.5),
+      Paint()
+        ..color = kTopBarEdge
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
     );
   }
 }
@@ -563,11 +661,6 @@ class _LoginHero extends StatelessWidget {
                 "Spades, Yahtzee, Nerts, Nines, Wavelength and more.",
               ),
               point(
-                Icons.dashboard_customize_rounded,
-                "Build your own",
-                "Design a scorecard for any game, or scan the rulebook.",
-              ),
-              point(
                 Icons.groups_rounded,
                 "Play with your group",
                 "Share scorecards live and track everyone's stats over time.",
@@ -575,6 +668,47 @@ class _LoginHero extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// "You're invited to join ..." above the sign-in form (invite links).
+class _InviteNote extends StatelessWidget {
+  final PendingInvite invite;
+  const _InviteNote(this.invite);
+
+  @override
+  Widget build(BuildContext context) {
+    final group = invite.groupName ?? 'a group';
+    final player = invite.playerName;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF00A2FF).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFF00A2FF).withValues(alpha: 0.35),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.group_add, color: Color(0xFF00A2FF), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              player == null
+                  ? "You're invited to join $group. Make an account or sign in to accept."
+                  : "You're invited to join $group as $player. Make an account or sign in to accept.",
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13.5,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

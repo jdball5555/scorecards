@@ -538,6 +538,163 @@ class GroupService {
     );
   }
 
+  /// The token for an "Invite with a link" link that turns this local player
+  /// into whoever opens it. Reuses the player's unused link if there is one.
+  Future<String> createInviteLink({
+    required String groupId,
+    required String groupName,
+    required String playerId,
+    required String playerName,
+  }) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+    final invites = _db.collection('player_invites');
+    final existing = await invites
+        .where('groupId', isEqualTo: groupId)
+        .where('localPlayerId', isEqualTo: playerId)
+        .get();
+    for (final d in existing.docs) {
+      if (d.data()['usedBy'] == null) {
+        // Keep the name on it current in case the player was renamed.
+        if (d.data()['localPlayerName'] != playerName ||
+            d.data()['groupName'] != groupName) {
+          await d.reference.update({
+            'localPlayerName': playerName,
+            'groupName': groupName,
+          });
+        }
+        return d.id;
+      }
+    }
+    final ref = invites.doc(); // random id: the link can't be guessed
+    await ref.set({
+      'groupId': groupId,
+      'groupName': groupName,
+      'localPlayerId': playerId,
+      'localPlayerName': playerName,
+      'createdBy': uid,
+      'createdAt': FieldValue.serverTimestamp(),
+      'usedBy': null,
+    });
+    return ref.id;
+  }
+
+  /// Accepts an invite link for the signed-in account: they join the group
+  /// in the local player's place and the player's past games become theirs.
+  /// Returns the group and player names. Throws [InviteProblem]-style
+  /// messages (as a String) when the link can't be used.
+  Future<({String groupName, String playerName, bool alreadyDone})>
+  claimInviteLink(String token) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw "Sign in first.";
+    try {
+      await user.reload();
+    } catch (_) {}
+    final me = FirebaseAuth.instance.currentUser ?? user;
+    final uid = me.uid;
+
+    final inviteRef = _db.collection('player_invites').doc(token);
+    final invite = await inviteRef.get();
+    if (!invite.exists) {
+      throw "This invite link doesn't work anymore. Ask for a new one.";
+    }
+    final inv = invite.data()!;
+    final groupId = inv['groupId'] as String;
+    final localId = inv['localPlayerId'] as String;
+    final localName = (inv['localPlayerName'] ?? '') as String;
+    final groupName = (inv['groupName'] ?? 'the group') as String;
+    if (inv['usedBy'] != null) {
+      if (inv['usedBy'] == uid) {
+        return (groupName: groupName, playerName: localName, alreadyDone: true);
+      }
+      throw "This invite link has already been used.";
+    }
+
+    final groupRef = _db.collection('game_groups').doc(groupId);
+    final groupDoc = await groupRef.get();
+    if (!groupDoc.exists) throw "That group doesn't exist anymore.";
+    final data = groupDoc.data()!;
+
+    bool isLocal(dynamic p) =>
+        (p is Map && p['id'] == localId) ||
+        p == localId ||
+        (localName.isNotEmpty && p == localName);
+    final localMembers = List<dynamic>.from(data['localMembers'] ?? []);
+    final guests = List<dynamic>.from(data['guests'] ?? []);
+    if (!localMembers.any(isLocal) && !guests.any(isLocal)) {
+      throw "$localName isn't in $groupName anymore, so this link doesn't work.";
+    }
+
+    // No name yet (new account)? Take the player's.
+    var myName = (me.displayName ?? '').trim();
+    if (myName.isEmpty && localName.isNotEmpty) {
+      myName = localName;
+      try {
+        await me.updateDisplayName(localName);
+        await _db.collection('users').doc(uid).set({
+          'displayName': localName,
+          'email': me.email,
+        }, SetOptions(merge: true));
+      } catch (_) {}
+    }
+
+    final members = List<String>.from(data['members'] ?? []);
+    if (members.contains(uid)) {
+      // Already in the group: merge the local player into them.
+      await linkLocalPlayerToMember(
+        groupId: groupId,
+        groupName: groupName,
+        localPlayerId: localId,
+        localPlayerName: localName,
+        memberUid: uid,
+        memberName: myName,
+      );
+      await inviteRef.update({
+        'usedBy': uid,
+        'usedAt': FieldValue.serverTimestamp(),
+      });
+      return (groupName: groupName, playerName: localName, alreadyDone: false);
+    }
+
+    localMembers.removeWhere(isLocal);
+    guests.removeWhere(isLocal);
+    final update = <String, dynamic>{
+      'members': FieldValue.arrayUnion([uid]),
+      'localMembers': localMembers,
+      'guests': guests,
+    };
+    final hidden = List<String>.from(data['hiddenPlayers'] ?? []);
+    if (hidden.remove(localId)) {
+      if (!hidden.contains(uid)) hidden.add(uid);
+      update['hiddenPlayers'] = hidden;
+    }
+
+    final batch = _db.batch();
+    batch.update(groupRef, update);
+    batch.update(inviteRef, {
+      'usedBy': uid,
+      'usedAt': FieldValue.serverTimestamp(),
+    });
+    final who = myName.isEmpty ? 'Someone' : myName;
+    for (final memberId in members) {
+      batch.set(_db.collection('users').doc(memberId).collection('mail').doc(), {
+        'type': 'system_notice',
+        'message':
+            '$who joined "$groupName" with an invite link and is now "$localName". Their past games came with them.',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+
+    await moveLocalHistoryToAccount(
+      groupId: groupId,
+      localPlayerId: localId,
+      localPlayerName: localName,
+      uid: uid,
+      accountName: myName,
+    );
+    return (groupName: groupName, playerName: localName, alreadyDone: false);
+  }
+
   /// Rewrites a group's scorecards so a local player's seats belong to an
   /// account: the player id becomes the account's uid and the name becomes
   /// the account's name (metrics group players by name). Seats are matched

@@ -28,7 +28,11 @@ class PitTemplate extends GameTemplate {
   };
 
   @override
-  bool canAddRound(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) {
+  bool canAddRound(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) {
     if (rounds.isEmpty) return true;
     var lastRound = rounds.last;
     for (int p = 0; p < playerCount; p++) {
@@ -41,7 +45,11 @@ class PitTemplate extends GameTemplate {
   }
 
   @override
-  bool isReadyToFinalize(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) {
+  bool isReadyToFinalize(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) {
     if (rounds.isEmpty) return false;
     for (var r in rounds) {
       for (int p = 0; p < playerCount; p++) {

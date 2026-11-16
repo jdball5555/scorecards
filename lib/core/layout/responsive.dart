@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-
 /// Screens narrower than this (phones, small browser windows) use the app
 /// layout with the bottom tab bar. Wider screens get the website layout.
 const double kWideBreakpoint = 840;

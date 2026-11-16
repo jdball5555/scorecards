@@ -401,7 +401,9 @@ class SpadesMetricsProvider extends GameMetricsProvider {
             0;
 
         payload.gamesPlayed++;
-        if (pNames.length > 2) payload.competitiveGamesPlayed++; // Spades usually has 4 players. If it has 4, it's competitive. Actually, if there is an opponent, it's competitive. We assume > 0 opScore exists.
+        if (pNames.length > 2)
+          payload
+              .competitiveGamesPlayed++; // Spades usually has 4 players. If it has 4, it's competitive. Actually, if there is an opponent, it's competitive. We assume > 0 opScore exists.
         if (myScore > opScore) payload.gamesWon++;
         payload.totalPoints += myScore;
         payload.gamesWithBagsCount++;

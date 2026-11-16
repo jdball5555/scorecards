@@ -429,10 +429,7 @@ class _TemplateScorecardEditorState extends State<TemplateScorecardEditor> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text(
-          "Rename Game",
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text("Rename Game", style: TextStyle(color: Colors.white)),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -1363,7 +1360,8 @@ class _TemplateScorecardEditorState extends State<TemplateScorecardEditor> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => TemplateCreateCustomize(customSettings: updatedSettings),
+        builder: (_) =>
+            TemplateCreateCustomize(customSettings: updatedSettings),
       ),
     );
 

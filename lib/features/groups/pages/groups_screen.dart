@@ -7,6 +7,8 @@ import '../../../core/shared_widgets/sleek_notification_banner.dart';
 import 'groups_customize_screen.dart';
 import '../../../core/layout/responsive.dart';
 import 'package:scorecards_app/core/shared_widgets/top_bar_background.dart';
+import 'package:flutter/services.dart';
+import '../player_invite.dart';
 
 class GroupsScreen extends StatefulWidget {
   const GroupsScreen({super.key});
@@ -89,19 +91,28 @@ class _GroupsScreenState extends State<GroupsScreen> {
           clipBehavior: Clip.antiAlias,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
-            child: builder(ctx),
+            // Scrolls in short windows instead of overflowing.
+            child: SingleChildScrollView(child: builder(ctx)),
           ),
         ),
       );
       return;
     }
+    // Sheets are capped at about half the screen unless they ask for more;
+    // with all the options it overflowed (yellow/black stripes) on phones.
+    // Let it grow, and scroll if it still doesn't fit.
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.9,
+      ),
       backgroundColor: const Color(0xFF1E1E1E),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: builder,
+      builder: (ctx) => SingleChildScrollView(child: builder(ctx)),
     );
   }
 
@@ -291,6 +302,142 @@ class _GroupsScreenState extends State<GroupsScreen> {
           ],
         );
       },
+    );
+  }
+
+  /// "Invite with a link": shows a link for this local player to send to
+  /// the real person. Opening it lets them make an account (or sign in) and
+  /// take the player's place in the group, past games included.
+  void _showInviteLinkDialog({
+    required String groupId,
+    required String groupName,
+    required String playerId,
+    required String playerName,
+  }) {
+    final link = _groupService
+        .createInviteLink(
+          groupId: groupId,
+          groupName: groupName,
+          playerId: playerId,
+          playerName: playerName,
+        )
+        .then(
+          (token) => PendingInvite.buildUrl(
+            token: token,
+            groupName: groupName,
+            playerName: playerName,
+          ).toString(),
+        );
+    showDialog(
+      context: context,
+      builder: (ctx) => FutureBuilder<String>(
+        future: link,
+        builder: (ctx, snap) {
+          final url = snap.data;
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Text(
+              "Invite $playerName",
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Send this link to $playerName. When they open it and "
+                    "make an account (or sign in), they take $playerName's "
+                    "place in $groupName, past games included.",
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  if (snap.hasError)
+                    Text(
+                      "Couldn't make the link: ${_friendlyError(snap.error!)}",
+                      style: const TextStyle(color: Colors.redAccent),
+                    )
+                  else if (url == null)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(8),
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF7855C1),
+                        ),
+                      ),
+                    )
+                  else
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.12),
+                        ),
+                      ),
+                      child: SelectableText(
+                        url,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "Works once. Anyone with the link can use it, so only send it to them.",
+                    style: TextStyle(color: Colors.white38, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text(
+                  "Close",
+                  style: TextStyle(color: Colors.white54),
+                ),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7855C1),
+                ),
+                onPressed: url == null
+                    ? null
+                    : () async {
+                        await Clipboard.setData(ClipboardData(text: url));
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        SleekNotificationBanner.show(
+                          "Link Copied",
+                          "Send it to $playerName.",
+                          icon: Icons.check_circle,
+                          color: const Color(0xFF00A2FF),
+                        );
+                      },
+                icon: const Icon(Icons.copy, size: 16, color: Colors.white),
+                label: const Text(
+                  "Copy link",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -631,6 +778,26 @@ class _GroupsScreenState extends State<GroupsScreen> {
                 );
               },
             ),
+            ListTile(
+              leading: Icon(Icons.share_outlined, color: iconColor),
+              title: const Text(
+                "Invite with a link",
+                style: TextStyle(color: Colors.white),
+              ),
+              subtitle: Text(
+                "They make an account and become $playerName",
+                style: const TextStyle(color: Colors.white54, fontSize: 11),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showInviteLinkDialog(
+                  groupId: groupId,
+                  groupName: groupName,
+                  playerId: playerId,
+                  playerName: playerName,
+                );
+              },
+            ),
             if (isGuest || playerName != currentUser?.displayName)
               ListTile(
                 leading: Icon(Icons.link, color: iconColor),
@@ -639,7 +806,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
                   style: TextStyle(color: Colors.white),
                 ),
                 subtitle: const Text(
-                  "Make this player someone's account",
+                  "Already has an account? Link it by email",
                   style: TextStyle(color: Colors.white54, fontSize: 11),
                 ),
                 onTap: () {

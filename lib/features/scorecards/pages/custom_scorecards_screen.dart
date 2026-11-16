@@ -485,11 +485,13 @@ class _CustomScorecardsScreenState extends State<CustomScorecardsScreen> {
                                                   ),
                                               decoration: BoxDecoration(
                                                 color: isPublished
-                                                    ? Colors.green.withValues(alpha: 
-                                                        0.2,
+                                                    ? Colors.green.withValues(
+                                                        alpha: 0.2,
                                                       )
                                                     : Colors.orangeAccent
-                                                          .withValues(alpha: 0.2),
+                                                          .withValues(
+                                                            alpha: 0.2,
+                                                          ),
                                                 borderRadius:
                                                     BorderRadius.circular(4),
                                                 border: Border.all(

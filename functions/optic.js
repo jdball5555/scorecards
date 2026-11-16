@@ -3,7 +3,7 @@
 //
 //   opticNewUser  a new Scorecards account -> "new user" alert in Optic
 //   opticAdmin    Optic's user admin: list users, view a user, change their
-//                 settings (name, email, sign-in, notifications)
+//                 settings (name, email, sign-in, notifications, premium beta)
 //
 // Both directions use Google-signed identity tokens from each project's Cloud
 // Functions service account, so there are no secrets to set up:
@@ -51,6 +51,28 @@ const NOTIFICATION_SETTINGS = [
   ["invite_accepted", "Someone accepts their invite"],
   ["new_scorecard_added", "New scorecard in group"],
 ];
+
+// Premium beta: early features for accounts switched on here in Optic (right
+// now: custom templates). Stored as the sign-in claim `premiumBeta`, which
+// only this server can set; users/{uid}.premiumBeta is a copy the app
+// watches so it notices the change right away.
+const PREMIUM_BETA_NOTE =
+  "Early features for this account. Right now: custom templates (the template builder, saved templates and the AI rulebook scan). " +
+  "They see a small \"Premium beta\" note in Settings.";
+
+function hasPremiumBeta(u) {
+  return !!(u.customClaims && u.customClaims.premiumBeta === true);
+}
+
+async function setPremiumBeta(uid, on) {
+  const u = await auth.getUser(uid);
+  const claims = { ...(u.customClaims || {}) };
+  if (on) claims.premiumBeta = true;
+  else delete claims.premiumBeta;
+  await auth.setCustomUserClaims(uid, claims);
+  // The copy the app listens to, so it refreshes its sign-in now.
+  await db.collection("users").doc(uid).set({ premiumBeta: on }, { merge: true });
+}
 
 function providerLabel(id) {
   return { password: "Email", "google.com": "Google", "apple.com": "Apple" }[id] || id;
@@ -101,6 +123,7 @@ const actions = {
         { label: "New this week", value: newThisWeek },
         { label: "Groups", value: await count("game_groups") },
         { label: "Scorecards", value: await count("scorecards") },
+        { label: "Premium beta", value: users.filter(hasPremiumBeta).length },
       ],
     };
   },
@@ -117,7 +140,10 @@ const actions = {
         created: iso(u.metadata.creationTime),
         lastActive: iso(u.metadata.lastRefreshTime || u.metadata.lastSignInTime),
         disabled: u.disabled,
-        tags: u.providerData.map((p) => providerLabel(p.providerId)),
+        tags: [
+          ...u.providerData.map((p) => providerLabel(p.providerId)),
+          ...(hasPremiumBeta(u) ? ["Premium beta"] : []),
+        ],
       };
     });
     users.sort((a, b) => String(b.created).localeCompare(String(a.created)));
@@ -186,6 +212,18 @@ const actions = {
           ],
         },
         {
+          title: "Premium beta",
+          note: PREMIUM_BETA_NOTE,
+          fields: [
+            {
+              key: "premiumBeta",
+              type: "bool",
+              label: "Premium beta",
+              value: hasPremiumBeta(u),
+            },
+          ],
+        },
+        {
           title: "Notifications",
           note: "The push notifications this person gets from Scorecards.",
           fields: NOTIFICATION_SETTINGS.map(([key, label]) => ({
@@ -223,8 +261,11 @@ const actions = {
     if (!uid || !changes || typeof changes !== "object") throw httpError(400, "uid and changes are required");
     const authUpdate = {};
     const docUpdate = {};
+    let premiumBeta;
     for (const [key, value] of Object.entries(changes)) {
-      if (key === "displayName") {
+      if (key === "premiumBeta") {
+        premiumBeta = value === true;
+      } else if (key === "displayName") {
         const name = String(value || "").trim().slice(0, 60);
         if (!name) throw httpError(400, "Display name can't be empty.");
         authUpdate.displayName = name;
@@ -250,6 +291,7 @@ const actions = {
       throw e;
     }
     if (authUpdate.disabled === true) await auth.revokeRefreshTokens(uid);
+    if (premiumBeta !== undefined) await setPremiumBeta(uid, premiumBeta);
     if (Object.keys(docUpdate).length) {
       await db.collection("users").doc(uid).set(docUpdate, { merge: true });
     }
@@ -319,7 +361,9 @@ exports.opticNewUser = functions.auth.user().onCreate(async (user) => {
   });
 });
 
-exports.opticAdmin = functions.https.onRequest(async (req, res) => {
+// Only Axis Team's functions may call this (Cloud IAM), on top of the token
+// check below.
+exports.opticAdmin = functions.runWith({ invoker: OPTIC_SERVICE_ACCOUNTS }).https.onRequest(async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
   const token = String(req.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   try {

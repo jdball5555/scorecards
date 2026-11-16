@@ -13,6 +13,7 @@ import '../features/settings/pages/feedback_form.dart';
 import '../features/settings/providers/mail_provider.dart';
 import 'app.dart' show navigatorKey;
 import 'app_shell.dart' show bottomNavIndexProvider;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Website layout: the collapsible left sidebar used across the Axis Optic
 /// sites (same sizes, timings and fade as Axis Team's MainLayout).
@@ -83,18 +84,69 @@ final routeStackObserver = RouteStackObserver();
 
 const _feedbackRouteName = '/feedback';
 
+Future<bool>? _shellPop;
+
 /// Closes pages/dialogs above the main tabs, respecting "unsaved changes"
 /// prompts. Returns false if a page asked to stay open.
-Future<bool> popToShell() async {
+///
+/// [beforeReveal] runs just before the main tabs come back into view (e.g.
+/// to switch to the tab you clicked), so you never see the tab you came from
+/// for a moment. [undoReveal] runs if a page then refuses to close.
+Future<bool> popToShell({
+  VoidCallback? beforeReveal,
+  VoidCallback? undoReveal,
+}) async {
+  // One at a time: quick clicks can't finish out of order.
+  while (_shellPop != null) {
+    await _shellPop;
+  }
+  final run = _popToShell(beforeReveal, undoReveal);
+  _shellPop = run;
+  try {
+    return await run;
+  } finally {
+    if (identical(_shellPop, run)) _shellPop = null;
+  }
+}
+
+Future<bool> _popToShell(
+  VoidCallback? beforeReveal,
+  VoidCallback? undoReveal,
+) async {
   final nav = navigatorKey.currentState;
-  if (nav == null) return true;
+  var revealed = false;
+  void reveal() {
+    if (revealed) return;
+    revealed = true;
+    beforeReveal?.call();
+  }
+
+  if (nav == null) {
+    reveal();
+    return true;
+  }
   while (nav.canPop()) {
     final before = routeStackObserver.stack.length;
+    // Closing this one shows the main tabs: switch them first, while they're
+    // still covered, so the switch and the close land in the same frame.
+    if (before <= 2) reveal();
+    // maybePop runs the page's own checks ("save changes?"). When there's
+    // nothing to ask it closes the page right away, before the next frame.
     await nav.maybePop();
-    await Future<void>.delayed(const Duration(milliseconds: 60));
-    // Still there, or it opened a "save changes?" dialog: let the user decide.
-    if (routeStackObserver.stack.length >= before) return false;
+    // Some pages close themselves a frame or two later, after checking for
+    // changes, or show a "save changes?" dialog and stay open.
+    for (var i = 0; i < 3 && routeStackObserver.stack.length >= before; i++) {
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    if (routeStackObserver.stack.length >= before) {
+      if (revealed) {
+        revealed = false;
+        undoReveal?.call();
+      }
+      return false;
+    }
   }
+  reveal();
   return true;
 }
 
@@ -114,26 +166,110 @@ class SiteChrome extends ConsumerWidget {
 
     return _FrameOverlay(
       child: GradientBackground(
-        // Laid out right-to-left so the sidebar is still on the left but is
-        // painted *after* the pages: page routes hide the semantics of anything
-        // painted before them, which would make the sidebar invisible to
-        // screen readers. (Only this Row is RTL; its children stay LTR.)
-        child: Row(
-          textDirection: TextDirection.rtl,
-          children: [
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, box) => MediaQuery(
-                  // Pages lay themselves out for the space beside the sidebar.
-                  data: MediaQuery.of(context).copyWith(size: box.biggest),
-                  child: SiteSidebarScope(child: child),
-                ),
-              ),
-            ),
-            _SiteSidebar(expanded: expanded),
-          ],
+        child: _SlidingFrame(
+          expanded: expanded,
+          page: SiteSidebarScope(child: child),
+          sidebar: _SiteSidebar(expanded: expanded),
         ),
       ),
+    );
+  }
+}
+
+/// Lays out the sidebar and the page beside it, and folds the sidebar
+/// smoothly: the page's width follows the sidebar's edge on every frame so
+/// its content (centered tiles and all) glides along with it.
+class _SlidingFrame extends StatefulWidget {
+  final bool expanded;
+  final Widget page;
+  final Widget sidebar;
+
+  const _SlidingFrame({
+    required this.expanded,
+    required this.page,
+    required this.sidebar,
+  });
+
+  @override
+  State<_SlidingFrame> createState() => _SlidingFrameState();
+}
+
+class _SlidingFrameState extends State<_SlidingFrame>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _fold = AnimationController(
+    vsync: this,
+    duration: _kAnim,
+    value: widget.expanded ? 1 : 0,
+  );
+  late final Animation<double> _curve = CurvedAnimation(
+    parent: _fold,
+    curve: Curves.easeInOutCubic,
+  );
+
+  @override
+  void didUpdateWidget(_SlidingFrame oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.expanded != widget.expanded) {
+      widget.expanded ? _fold.forward() : _fold.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _fold.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        final size = box.biggest;
+        // Built once per layout, not per frame, so the page isn't rebuilt
+        // while the sidebar moves.
+        final page = RepaintBoundary(child: widget.page);
+        final sidebar = RepaintBoundary(child: widget.sidebar);
+        return AnimatedBuilder(
+          animation: _curve,
+          builder: (context, _) {
+            final sidebarWidth =
+                _kCollapsedWidth +
+                (_kExpandedWidth - _kCollapsedWidth) * _curve.value;
+            // The page follows the sidebar's edge every frame, so centered
+            // content glides to its new spot instead of snapping at the end.
+            final pageWidth = size.width - sidebarWidth;
+            return Stack(
+              clipBehavior: Clip.hardEdge,
+              children: [
+                Positioned(
+                  left: sidebarWidth,
+                  top: 0,
+                  bottom: 0,
+                  width: pageWidth,
+                  child: MediaQuery(
+                    // Pages lay themselves out for the space beside the
+                    // sidebar.
+                    data: MediaQuery.of(
+                      context,
+                    ).copyWith(size: Size(pageWidth, size.height)),
+                    child: page,
+                  ),
+                ),
+                // Painted after the page: page routes hide the semantics of
+                // anything painted before them, which would make the sidebar
+                // invisible to screen readers.
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: sidebarWidth,
+                  child: sidebar,
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -175,12 +311,18 @@ class _SiteSidebar extends ConsumerWidget {
   const _SiteSidebar({required this.expanded});
 
   Future<void> _goToTab(WidgetRef ref, int index) async {
-    if (!await popToShell()) return;
-    ref.read(bottomNavIndexProvider.notifier).state = index;
+    final tab = ref.read(bottomNavIndexProvider.notifier);
+    final from = tab.state;
+    await popToShell(
+      beforeReveal: () => tab.state = index,
+      undoReveal: () => tab.state = from,
+    );
   }
 
   Future<void> _openFeedback() async {
     if (routeStackObserver.topName == _feedbackRouteName) return;
+    // Closing what's open and opening Feedback happen in the same frame (no
+    // glimpse of the page underneath), unless a page asks to save first.
     if (!await popToShell()) return;
     navigatorKey.currentState?.push(
       MaterialPageRoute(
@@ -200,9 +342,8 @@ class _SiteSidebar extends ConsumerWidget {
 
     return Material(
       type: MaterialType.transparency,
-      child: AnimatedContainer(
-        duration: _kAnim,
-        width: expanded ? _kExpandedWidth : _kCollapsedWidth,
+      // Width comes from _SlidingFrame, which animates it.
+      child: DecoratedBox(
         decoration: const BoxDecoration(color: _kSidebarColor),
         child: SafeArea(
           right: false,
@@ -284,14 +425,13 @@ class _SiteSidebar extends ConsumerWidget {
                               top: 0,
                               bottom: 0,
                               child: Center(
-                                child: AnimatedOpacity(
-                                  duration: _kAnim,
-                                  opacity: expanded ? 1.0 : 0.0,
-                                  child: const Text(
+                                child: _Fade(
+                                  visible: expanded,
+                                  builder: (fade) => Text(
                                     'v$appVersion',
                                     softWrap: false,
                                     style: TextStyle(
-                                      color: _kGray,
+                                      color: _faded(_kGray, fade),
                                       fontSize: 12,
                                     ),
                                   ),
@@ -359,7 +499,10 @@ class _SidebarHeader extends StatelessWidget {
           child: Row(
             children: [
               Image.asset(
-                'assets/branding/app_mark.png',
+                // Rounded square on the website (like Axis Team), circle in the app.
+                kIsWeb
+                    ? 'assets/branding/app_mark_square.png'
+                    : 'assets/branding/app_mark.png',
                 width: 36,
                 height: 36,
                 filterQuality: FilterQuality.high,
@@ -367,16 +510,15 @@ class _SidebarHeader extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: AnimatedOpacity(
-                  duration: _kAnim,
-                  opacity: expanded ? 1.0 : 0.0,
-                  child: const Text(
+                child: _Fade(
+                  visible: expanded,
+                  builder: (fade) => Text(
                     'Scorecards',
                     maxLines: 1,
                     softWrap: false,
                     overflow: TextOverflow.fade,
                     style: TextStyle(
-                      color: Colors.white,
+                      color: _faded(Colors.white, fade),
                       fontWeight: FontWeight.w900,
                       fontSize: 22,
                       letterSpacing: 0.5,
@@ -609,16 +751,18 @@ class _NavItem extends StatelessWidget {
                 ),
                 const SizedBox(width: 14),
                 Expanded(
-                  child: AnimatedOpacity(
-                    duration: _kAnim,
-                    opacity: expanded ? 1.0 : 0.0,
-                    child: Text(
+                  child: _Fade(
+                    visible: expanded,
+                    builder: (fade) => Text(
                       title,
                       maxLines: 1,
                       softWrap: false,
                       overflow: TextOverflow.fade,
                       style: TextStyle(
-                        color: isSelected ? Colors.white : _kPrimaryText,
+                        color: _faded(
+                          isSelected ? Colors.white : _kPrimaryText,
+                          fade,
+                        ),
                         fontWeight: isSelected
                             ? FontWeight.w700
                             : FontWeight.w500,
@@ -628,24 +772,26 @@ class _NavItem extends StatelessWidget {
                   ),
                 ),
                 if (badgeCount != null)
-                  AnimatedOpacity(
-                    duration: _kAnim,
-                    opacity: expanded ? 1.0 : 0.0,
-                    child: Container(
+                  _Fade(
+                    visible: expanded,
+                    builder: (fade) => Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 7,
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: badgeColor ?? const Color(0x26FFFFFF),
+                        color: _faded(
+                          badgeColor ?? const Color(0x26FFFFFF),
+                          fade,
+                        ),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
                         badgeCount!,
                         maxLines: 1,
                         softWrap: false,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: _faded(Colors.white, fade),
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
                         ),
@@ -700,13 +846,12 @@ class _AccountRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: AnimatedOpacity(
-                    duration: _kAnim,
-                    opacity: expanded ? 1.0 : 0.0,
-                    child: Text(
+                  child: _Fade(
+                    visible: expanded,
+                    builder: (fade) => Text(
                       name,
-                      style: const TextStyle(
-                        color: _kPrimaryText,
+                      style: TextStyle(
+                        color: _faded(_kPrimaryText, fade),
                         fontWeight: FontWeight.w600,
                       ),
                       maxLines: 1,
@@ -724,3 +869,26 @@ class _AccountRow extends StatelessWidget {
     );
   }
 }
+
+/// The sidebar's text fade (200ms, like Axis Team's). Fades by changing the
+/// text's own color rather than with an opacity layer: identical to look at,
+/// but an opacity layer makes the browser compile new GPU shaders the first
+/// time the sidebar folds, which showed up as a hitch.
+class _Fade extends StatelessWidget {
+  final bool visible;
+  final Widget Function(double fade) builder;
+
+  const _Fade({required this.visible, required this.builder});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: visible ? 1.0 : 0.0),
+      duration: _kAnim,
+      builder: (context, fade, _) => builder(fade),
+    );
+  }
+}
+
+Color _faded(Color color, double fade) =>
+    color.withValues(alpha: color.a * fade);

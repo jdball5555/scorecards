@@ -224,7 +224,9 @@ class MetricsRegistry {
           lVal,
           hVal,
           gVal,
-          l.competitiveGamesPlayed == 0 ? "N/A" : (isRec ? "N/A" : "${lVal.toStringAsFixed(1)}%"),
+          l.competitiveGamesPlayed == 0
+              ? "N/A"
+              : (isRec ? "N/A" : "${lVal.toStringAsFixed(1)}%"),
           "$gLbl: ${l.competitiveGamesPlayed}",
           isRec ? null : "$wLbl: ${l.gamesWon}",
         );

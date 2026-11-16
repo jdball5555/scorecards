@@ -41,13 +41,14 @@ abstract class GameMetricsProvider {
     required int trendNumber,
     required String trendUnit,
   }) {
-    var lifetime = calculateData(lifetimeGames, playerName);
-    var current = calculateData(currentTrendGames, playerName);
-    var historical = calculateData(
-      lifetimeGames.skip(currentTrendGames.length).toList(),
+    var lifetime = _calculate(lifetimeGames, playerName);
+    var current = _calculate(currentTrendGames, playerName);
+    var historical = _calculate(
+      lifetimeGames,
       playerName,
+      skip: currentTrendGames.length,
     );
-    var global = calculateData(globalGames, null);
+    var global = _calculate(globalGames, null);
 
     bool isGroup = playerName == 'Group Metrics';
     bool isRecords = playerName == 'Group Records';
@@ -77,6 +78,33 @@ abstract class GameMetricsProvider {
       trendColor: MetricsUtils.neutralGrey,
       benchmarkColor: MetricsUtils.neutralGrey,
     );
+  }
+
+  // Every tile on the Metrics page asks for the same four payloads (one
+  // full pass over the games each). Remember them per list so a page of
+  // tiles costs four passes instead of four per tile. Keyed by the list
+  // object itself: the Metrics page hands out new lists whenever the data
+  // or filters change, so a stale result can't be returned.
+  final List<(List<Map<String, dynamic>>, int, String?, MetricPayload)> _memo =
+      [];
+
+  MetricPayload _calculate(
+    List<Map<String, dynamic>> games,
+    String? playerName, {
+    int skip = 0,
+  }) {
+    for (final m in _memo) {
+      if (identical(m.$1, games) && m.$2 == skip && m.$3 == playerName) {
+        return m.$4;
+      }
+    }
+    final result = calculateData(
+      skip == 0 ? games : games.skip(skip).toList(),
+      playerName,
+    );
+    _memo.add((games, skip, playerName, result));
+    if (_memo.length > 64) _memo.removeAt(0);
+    return result;
   }
 
   DateTime parseGameDate(Map<String, dynamic> game) {

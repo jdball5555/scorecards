@@ -39,7 +39,11 @@ class YahtzeeTemplate extends GameTemplate {
   };
 
   @override
-  bool canAddRound(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) => false;
+  bool canAddRound(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) => false;
 
   final List<String> _categories = [
     'Aces',
@@ -76,7 +80,11 @@ class YahtzeeTemplate extends GameTemplate {
   ];
 
   @override
-  bool isReadyToFinalize(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) {
+  bool isReadyToFinalize(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) {
     for (int p = 0; p < playerCount; p++) {
       int count = 0;
       for (var r in rounds) {

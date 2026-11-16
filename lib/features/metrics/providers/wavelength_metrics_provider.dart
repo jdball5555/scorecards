@@ -8,22 +8,13 @@ class WavelengthMetricsProvider extends GameMetricsProvider {
 
   @override
   List<String> getAvailableTileIds(String playerName) {
-    if (playerName == 'Group Records')
-      return [
-        'standardWinStreak',
-      ];
-    List<String> tiles = [
-      'winRate',
-      'avgPoints',
-      'wavelengthRoundsTo10',
-    ];
+    if (playerName == 'Group Records') return ['standardWinStreak'];
+    List<String> tiles = ['winRate', 'avgPoints', 'wavelengthRoundsTo10'];
     if (playerName == 'Group Metrics') {
       tiles.insert(0, 'gamesPlayed');
       tiles.remove('winRate');
     } else {
-      tiles.addAll([
-        'standardWinStreak',
-      ]);
+      tiles.addAll(['standardWinStreak']);
     }
     return tiles;
   }
@@ -72,7 +63,8 @@ class WavelengthMetricsProvider extends GameMetricsProvider {
         // To simplify streaking, if we just use player names:
         for (int p = 0; p < 2; p++) {
           String pName = pNames[t * 2 + p];
-          if (winners.contains(t) && teams > 1) { // Competitive win
+          if (winners.contains(t) && teams > 1) {
+            // Competitive win
             activeWins[pName] = (activeWins[pName] ?? [])..add(gameDate);
             if (isTarget(pName))
               payload.longestWinStreak.update(
@@ -111,8 +103,8 @@ class WavelengthMetricsProvider extends GameMetricsProvider {
       List<int> scores = [];
       for (int t = 0; t < teams; t++) {
         scores.add(
-            int.tryParse(rounds.last['t${t + 1}Total']?.toString() ?? '0') ??
-                0);
+          int.tryParse(rounds.last['t${t + 1}Total']?.toString() ?? '0') ?? 0,
+        );
       }
 
       List<int> pIndices = (playerName != null && !playerName.contains('Group'))
@@ -147,11 +139,15 @@ class WavelengthMetricsProvider extends GameMetricsProvider {
         }
 
         payload.totalPoints += pScore;
-        
+
         // Compute Rounds to 10 points
         int roundReached10 = -1;
         for (int r = 0; r < rounds.length; r++) {
-          int runningTotal = int.tryParse(rounds[r]['t${tIndex + 1}Total']?.toString() ?? '0') ?? 0;
+          int runningTotal =
+              int.tryParse(
+                rounds[r]['t${tIndex + 1}Total']?.toString() ?? '0',
+              ) ??
+              0;
           if (runningTotal >= 10) {
             roundReached10 = r + 1; // 1-indexed round number
             break;
@@ -164,18 +160,8 @@ class WavelengthMetricsProvider extends GameMetricsProvider {
         }
 
         String teamName = "${pNames[tIndex * 2]} & ${pNames[tIndex * 2 + 1]}";
-        payload.highestScore.update(
-          pScore,
-          teamName,
-          gameDate,
-          isHigh: true,
-        );
-        payload.lowestScore.update(
-          pScore,
-          teamName,
-          gameDate,
-          isHigh: false,
-        );
+        payload.highestScore.update(pScore, teamName, gameDate, isHigh: true);
+        payload.lowestScore.update(pScore, teamName, gameDate, isHigh: false);
       }
     }
     return payload;

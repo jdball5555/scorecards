@@ -47,5 +47,5 @@ class ScorecardFilterNotifier extends StateNotifier<ScorecardFilterState> {
 
 final scorecardFilterProvider =
     StateNotifierProvider<ScorecardFilterNotifier, ScorecardFilterState>((ref) {
-  return ScorecardFilterNotifier();
-});
+      return ScorecardFilterNotifier();
+    });

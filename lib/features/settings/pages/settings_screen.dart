@@ -9,6 +9,8 @@ import '../providers/notification_settings_provider.dart';
 import 'mail_inbox_screen.dart';
 import '../../../core/layout/responsive.dart';
 import 'package:scorecards_app/core/shared_widgets/top_bar_background.dart';
+import 'package:scorecards_app/features/premium/premium_beta.dart';
+import '../../../core/app_version.dart';
 import 'feedback_form.dart'; // --- NEW IMPORT ---
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -192,6 +194,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   user?.email ?? "No Email",
                   style: const TextStyle(color: Colors.white70, fontSize: 16),
                 ),
+                if (hasPremiumBeta(ref)) ...[
+                  const SizedBox(height: 8),
+                  const PremiumBetaBadge(),
+                ],
 
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 16.0),
@@ -466,7 +472,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 32),
           const Center(
             child: Text(
-              "Scorecards v0.2.0",
+              "Scorecards v$appVersion",
               style: TextStyle(
                 color: Colors.white38,
                 fontSize: 12,

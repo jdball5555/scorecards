@@ -199,7 +199,9 @@ class RulebookParser {
         r'(?:exactly\s+)?(\d{1,3})\s+(?:rounds?|hands?|turns?|innings?)',
       ),
       RegExp(r'(\d{1,3})\s+(?:rounds?|hands?)\s+(?:are|is)\s+played'),
-      RegExp(r'game (?:ends|is over) after (?:the )?(\d{1,3})(?:st|nd|rd|th)?\s+(?:rounds?|hands?)'),
+      RegExp(
+        r'game (?:ends|is over) after (?:the )?(\d{1,3})(?:st|nd|rd|th)?\s+(?:rounds?|hands?)',
+      ),
     ];
     for (final p in patterns) {
       final m = p.firstMatch(lower);
@@ -220,15 +222,17 @@ class RulebookParser {
       // "first player to reach 500 points", "first team to score 250"
       RegExp(
         r'first\s+(?:player\s+|team\s+|person\s+|one\s+)?to\s+'
-        r'(?:reach|score|get|hit|earn|accumulate|collect)?\s*'
-        r'(?:a total of\s+|at least\s+)?' + n,
+                r'(?:reach|score|get|hit|earn|accumulate|collect)?\s*'
+                r'(?:a total of\s+|at least\s+)?' +
+            n,
       ),
       // "when a player reaches 100 points", "until someone scores 500"
       RegExp(
         r'(?:when|until|once|as soon as)\s+(?:a|one|any|the first)?\s*'
-        r'(?:player|team|someone|anyone|person)?\s*'
-        r'(?:reaches|has|scores|gets|hits|passes|exceeds|goes over)\s+'
-        r'(?:a total of\s+|at least\s+)?' + n,
+                r'(?:player|team|someone|anyone|person)?\s*'
+                r'(?:reaches|has|scores|gets|hits|passes|exceeds|goes over)\s+'
+                r'(?:a total of\s+|at least\s+)?' +
+            n,
       ),
       // "play to 500", "game is played to 1,000 points"
       RegExp(r'play(?:ed|s)?\s+(?:up\s+)?to\s+' + n),

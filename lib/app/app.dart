@@ -13,6 +13,8 @@ import '../features/settings/providers/notification_settings_provider.dart';
 // NEW IMPORT: We must import the banner file so we can use its single, global key!
 import '../core/shared_widgets/sleek_notification_banner.dart';
 import 'site_sidebar.dart';
+import '../features/groups/invite_claimer.dart';
+import '../core/layout/freeze_when_hidden.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 // DELETED the duplicate globalMessengerKey from here!
@@ -145,6 +147,16 @@ class _ScorecardsAppState extends ConsumerState<ScorecardsApp> {
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.transparent,
+        // Website: pages switch instantly, like the sidebar tabs do (the
+        // default slid in from the side, iOS-style on Macs).
+        pageTransitionsTheme: kIsWeb
+            ? PageTransitionsTheme(
+                builders: {
+                  for (final platform in TargetPlatform.values)
+                    platform: _InstantPageTransitions(),
+                },
+              )
+            : null,
       ),
       home: authState.when(
         data: (user) {
@@ -152,7 +164,8 @@ class _ScorecardsAppState extends ConsumerState<ScorecardsApp> {
             return const LoginScreen();
           } else {
             saveDeviceToken();
-            return const AppShell();
+            // Opened from an "Invite with a link" link? Offer to join.
+            return const InviteClaimer(child: AppShell());
           }
         },
         loading: () => const Scaffold(
@@ -164,5 +177,37 @@ class _ScorecardsAppState extends ConsumerState<ScorecardsApp> {
             Scaffold(body: Center(child: Text("Authentication Error: $error"))),
       ),
     );
+  }
+}
+
+/// No page animation: the new page simply replaces the old one.
+class _InstantPageTransitions extends PageTransitionsBuilder {
+  const _InstantPageTransitions();
+
+  @override
+  Duration get transitionDuration => Duration.zero;
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    // A page covered by another full page keeps its size while hidden, so
+    // folding the sidebar only lays out the page you can see.
+    return ListenableBuilder(
+      listenable: routeStackObserver,
+      builder: (context, _) =>
+          FreezeWhenHidden(hidden: _coveredByFullPage(route), child: child),
+    );
+  }
+
+  static bool _coveredByFullPage(Route<dynamic> route) {
+    final stack = routeStackObserver.stack;
+    final i = stack.indexOf(route);
+    if (i < 0) return false;
+    return stack.skip(i + 1).any((r) => r is PageRoute && r.opaque);
   }
 }

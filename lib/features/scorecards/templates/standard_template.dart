@@ -25,13 +25,21 @@ class StandardTemplate extends GameTemplate {
   };
 
   @override
-  bool canAddRound(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) => true;
+  bool canAddRound(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) => true;
 
   @override
   void onRoundRemoved(List<Map<String, dynamic>> rounds) {}
 
   @override
-  bool isReadyToFinalize(List<Map<String, dynamic>> rounds, int playerCount, {Map<String, dynamic> customSettings = const {}}) {
+  bool isReadyToFinalize(
+    List<Map<String, dynamic>> rounds,
+    int playerCount, {
+    Map<String, dynamic> customSettings = const {},
+  }) {
     if (rounds.isEmpty) return false;
     for (var round in rounds) {
       for (int p = 1; p <= playerCount; p++) {
@@ -103,8 +111,9 @@ class StandardTemplate extends GameTemplate {
     final cellConfigs = customSettings['cellConfigs'] as Map<String, dynamic>?;
     final String configKey = 'round_${roundIndex}_player_$playerIndex';
     final String generalPlayerKey = 'player_$playerIndex';
-    
-    final Map<String, dynamic>? config = cellConfigs?[configKey] ?? cellConfigs?[generalPlayerKey];
+
+    final Map<String, dynamic>? config =
+        cellConfigs?[configKey] ?? cellConfigs?[generalPlayerKey];
 
     if (config != null) {
       showDialog(
@@ -112,13 +121,15 @@ class StandardTemplate extends GameTemplate {
         builder: (context) {
           return PlayableDataEntryDialog(
             config: config,
-            defaultTitle: "Round ${roundIndex + 1}: ${playerNames[playerIndex]}",
+            defaultTitle:
+                "Round ${roundIndex + 1}: ${playerNames[playerIndex]}",
           );
         },
       ).then((result) {
         if (result != null && result is Map) {
           rounds[roundIndex]['p${playerIndex + 1}Score'] = result['score'];
-          rounds[roundIndex]['p${playerIndex + 1}RawInputs'] = result['rawInputs'];
+          rounds[roundIndex]['p${playerIndex + 1}RawInputs'] =
+              result['rawInputs'];
           onDataChanged();
         }
       });
@@ -176,11 +187,15 @@ class StandardTemplate extends GameTemplate {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel", style: TextStyle(color: Colors.white54)),
+              child: const Text(
+                "Cancel",
+                style: TextStyle(color: Colors.white54),
+              ),
             ),
             TextButton(
               onPressed: () {
-                rounds[roundIndex]['p${playerIndex + 1}Score'] = scoreController.text;
+                rounds[roundIndex]['p${playerIndex + 1}Score'] =
+                    scoreController.text;
                 onDataChanged();
                 Navigator.pop(context);
               },

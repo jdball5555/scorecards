@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scorecards_app/core/shared_widgets/game_request_link.dart';
 import 'package:scorecards_app/core/shared_widgets/sleek_notification_banner.dart';
@@ -13,10 +14,12 @@ void main() {
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(
-      MaterialApp(
-        scaffoldMessengerKey: globalMessengerKey,
-        theme: ThemeData.dark(),
-        home: const Scaffold(body: Center(child: GameRequestLink())),
+      ProviderScope(
+        child: MaterialApp(
+          scaffoldMessengerKey: globalMessengerKey,
+          theme: ThemeData.dark(),
+          home: const Scaffold(body: Center(child: GameRequestLink())),
+        ),
       ),
     );
     await tester.tap(find.textContaining("Want a game that's not here"));
@@ -35,10 +38,12 @@ void main() {
 
   testWidgets('empty feedback is not submitted', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
-        scaffoldMessengerKey: globalMessengerKey,
-        theme: ThemeData.dark(),
-        home: const FeedbackFormScreen(),
+      ProviderScope(
+        child: MaterialApp(
+          scaffoldMessengerKey: globalMessengerKey,
+          theme: ThemeData.dark(),
+          home: const FeedbackFormScreen(),
+        ),
       ),
     );
     await tester.scrollUntilVisible(

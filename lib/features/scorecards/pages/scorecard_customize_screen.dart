@@ -12,7 +12,7 @@ class ScorecardCustomizeScreen extends ConsumerStatefulWidget {
   final List<Map<String, dynamic>> userGroups;
 
   const ScorecardCustomizeScreen({
-    super.key, 
+    super.key,
     required this.availableGameTypes,
     required this.userGroups,
   });
@@ -24,8 +24,6 @@ class ScorecardCustomizeScreen extends ConsumerStatefulWidget {
 
 class _ScorecardCustomizeScreenState
     extends ConsumerState<ScorecardCustomizeScreen> {
-
-
   late String _tempScope;
   late int _tempTrendNumber;
   late String _tempTrendUnit;
@@ -76,10 +74,10 @@ class _ScorecardCustomizeScreenState
 
   Future<void> _saveAndPop() async {
     setState(() => _isSaving = true);
-    
+
     // Simulate a brief delay to show the saving spinner for feedback
     await Future.delayed(const Duration(milliseconds: 300));
-    
+
     if (mounted) {
       setState(() => _canPop = true);
       final filterNotifier = ref.read(scorecardFilterProvider.notifier);
@@ -98,15 +96,10 @@ class _ScorecardCustomizeScreenState
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           "Unsaved Changes",
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         content: const Text(
           "You have unsaved changes. Do you want to save them?",
@@ -153,7 +146,12 @@ class _ScorecardCustomizeScreenState
     return false;
   }
 
-  Widget _buildChip(String label, bool isSelected, VoidCallback onTap, {IconData? icon}) {
+  Widget _buildChip(
+    String label,
+    bool isSelected,
+    VoidCallback onTap, {
+    IconData? icon,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -383,13 +381,14 @@ class _ScorecardCustomizeScreenState
                         }).toList(),
                       ],
                     ),
-
                   ],
                 ),
               ),
               const SizedBox(height: 32),
               ElevatedButton(
-                onPressed: (_hasUnsavedChanges() && !_isSaving) ? _saveAndPop : null,
+                onPressed: (_hasUnsavedChanges() && !_isSaving)
+                    ? _saveAndPop
+                    : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF00A2FF),
                   disabledBackgroundColor: Colors.white.withOpacity(0.1),
@@ -410,7 +409,9 @@ class _ScorecardCustomizeScreenState
                     : Text(
                         "Save Changes",
                         style: TextStyle(
-                          color: _hasUnsavedChanges() ? Colors.white : Colors.white54,
+                          color: _hasUnsavedChanges()
+                              ? Colors.white
+                              : Colors.white54,
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1.1,

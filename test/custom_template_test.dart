@@ -32,8 +32,12 @@ Map<String, dynamic> settings({
 };
 
 /// Simulates the scoring screen's update cycle after a cell is edited.
-void update(CustomTemplate t, List<Map<String, dynamic>> rounds, int players,
-    Map<String, dynamic> s) {
+void update(
+  CustomTemplate t,
+  List<Map<String, dynamic>> rounds,
+  int players,
+  Map<String, dynamic> s,
+) {
   t.recalculateTotals(rounds, players, customSettings: s);
   if (t.onDataUpdated(rounds, players, customSettings: s)) {
     t.recalculateTotals(rounds, players, customSettings: s);
@@ -235,7 +239,12 @@ void main() {
         {
           'inputs': [
             {'type': 'standard'},
-            {'type': 'toggle', 'name': 'Won?', 'worthPoints': true, 'points': 5},
+            {
+              'type': 'toggle',
+              'name': 'Won?',
+              'worthPoints': true,
+              'points': 5,
+            },
           ],
         },
         raw: {'input_0': '12', 'input_1': true},
@@ -248,12 +257,9 @@ void main() {
     testWidgets('cell saved with no inputs still accepts a score', (
       tester,
     ) async {
-      final result = await runDialog(
-        tester,
-        {'inputs': []},
-        interact: () =>
-            tester.enterText(find.byType(TextField).first, '42'),
-      );
+      final result = await runDialog(tester, {
+        'inputs': [],
+      }, interact: () => tester.enterText(find.byType(TextField).first, '42'));
       expect(result?['score'], 42);
     });
   });
@@ -289,7 +295,10 @@ void main() {
       await tapVisible(tester, find.text('Next'));
       await tester.pumpAndSettle();
 
-      await tapVisible(tester, find.text('Most points after locked amount of rounds'));
+      await tapVisible(
+        tester,
+        find.text('Most points after locked amount of rounds'),
+      );
       await tester.pump();
       await tapVisible(tester, find.text('Finish'));
       await tester.pump();
@@ -357,7 +366,9 @@ void main() {
 
       // Add 3 more internal inputs to force the crowded / scrolling layout.
       for (int i = 0; i < 3; i++) {
-        await tester.tapAt(tester.getCenter(find.text('BLUEPRINT\n(Player/Team)')));
+        await tester.tapAt(
+          tester.getCenter(find.text('BLUEPRINT\n(Player/Team)')),
+        );
         await tester.pumpAndSettle();
         await tester.tap(find.text('Add internal input'));
         await tester.pumpAndSettle();

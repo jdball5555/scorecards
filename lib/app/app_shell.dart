@@ -10,6 +10,7 @@ import '../features/settings/pages/settings_screen.dart';
 import '../core/shared_widgets/gradient_background.dart';
 import '../core/layout/responsive.dart';
 import '../features/settings/providers/mail_provider.dart';
+import '../core/layout/freeze_when_hidden.dart';
 
 final bottomNavIndexProvider = StateProvider<int>((ref) => 0);
 
@@ -166,7 +167,12 @@ class _LazyIndexedStackState extends State<_LazyIndexedStack> {
       children: List.generate(_cache.length, (i) {
         final screen = _cache[i];
         if (screen == null) return const SizedBox.shrink();
-        return Offstage(offstage: i != widget.index, child: screen);
+        final hidden = i != widget.index;
+        // Hidden tabs keep their size (no layout work while the sidebar folds).
+        return Offstage(
+          offstage: hidden,
+          child: FreezeWhenHidden(hidden: hidden, child: screen),
+        );
       }),
     );
   }

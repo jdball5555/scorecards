@@ -57,7 +57,7 @@ class _MetricsCustomizeScreenState extends State<MetricsCustomizeScreen> {
   late List<String> _tempAvailablePlayers;
   late List<String> _tempAvailableTeams;
 
-  late  bool _isInit = false;
+  late bool _isInit = false;
   bool _canPop = false;
   bool _isSaving = false;
 
@@ -170,14 +170,17 @@ class _MetricsCustomizeScreenState extends State<MetricsCustomizeScreen> {
     if (_tempCompareMode != widget.compareMode) return true;
     if (_tempComparePlayer != widget.comparePlayer) return true;
     if (_tempTrendNumber != widget.trendNumber) return true;
-    if (_tempTrendUnit.toLowerCase() != widget.trendUnit.toLowerCase()) return true;
+    if (_tempTrendUnit.toLowerCase() != widget.trendUnit.toLowerCase())
+      return true;
 
-    final newHidden = _allTiles.where((id) => _tileVisibility[id] == false).toList();
+    final newHidden = _allTiles
+        .where((id) => _tileVisibility[id] == false)
+        .toList();
     if (newHidden.length != widget.hiddenTiles.length) return true;
     for (var h in newHidden) {
       if (!widget.hiddenTiles.contains(h)) return true;
     }
-    
+
     if (_allTiles.length != widget.tileOrder.length) return true;
     for (int i = 0; i < _allTiles.length; i++) {
       if (_allTiles[i] != widget.tileOrder[i]) return true;
@@ -199,15 +202,10 @@ class _MetricsCustomizeScreenState extends State<MetricsCustomizeScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           "Unsaved Changes",
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         content: const Text(
           "You have unsaved changes. Do you want to save them?",
@@ -881,7 +879,9 @@ class _MetricsCustomizeScreenState extends State<MetricsCustomizeScreen> {
             ],
             const SizedBox(height: 32),
             ElevatedButton(
-              onPressed: (_hasUnsavedChanges() && !_isSaving) ? _saveAndPop : null,
+              onPressed: (_hasUnsavedChanges() && !_isSaving)
+                  ? _saveAndPop
+                  : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF00A2FF),
                 disabledBackgroundColor: Colors.white.withOpacity(0.1),
@@ -902,7 +902,9 @@ class _MetricsCustomizeScreenState extends State<MetricsCustomizeScreen> {
                   : Text(
                       "Save Changes",
                       style: TextStyle(
-                        color: _hasUnsavedChanges() ? Colors.white : Colors.white54,
+                        color: _hasUnsavedChanges()
+                            ? Colors.white
+                            : Colors.white54,
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.1,

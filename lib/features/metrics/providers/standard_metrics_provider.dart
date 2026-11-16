@@ -10,21 +10,13 @@ class StandardMetricsProvider extends GameMetricsProvider {
 
   @override
   List<String> getAvailableTileIds(String playerName) {
-    if (playerName == 'Group Records')
-      return [
-        'standardWinStreak',
-      ];
-    List<String> tiles = [
-      'winRate',
-      'avgPoints',
-    ];
+    if (playerName == 'Group Records') return ['standardWinStreak'];
+    List<String> tiles = ['winRate', 'avgPoints'];
     if (playerName == 'Group Metrics') {
       tiles.insert(0, 'gamesPlayed');
       tiles.remove('winRate');
     } else {
-      tiles.addAll([
-        'standardWinStreak',
-      ]);
+      tiles.addAll(['standardWinStreak']);
     }
     return tiles;
   }
@@ -139,7 +131,7 @@ class StandardMetricsProvider extends GameMetricsProvider {
         if (pNames.length > 1 && pScore == scores.reduce(math.max)) {
           payload.gamesWon++;
         }
-        
+
         payload.totalPoints += pScore;
         payload.highestScore.update(
           pScore,

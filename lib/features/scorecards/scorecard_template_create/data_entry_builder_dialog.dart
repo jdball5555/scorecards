@@ -809,10 +809,11 @@ class _DataEntryBuilderDialogState extends State<DataEntryBuilderDialog> {
                     ),
                     controller:
                         TextEditingController(
-                          text: input['name']?.toString() ?? '',
-                        )..selection = TextSelection.collapsed(
-                          offset: (input['name']?.toString() ?? '').length,
-                        ),
+                            text: input['name']?.toString() ?? '',
+                          )
+                          ..selection = TextSelection.collapsed(
+                            offset: (input['name']?.toString() ?? '').length,
+                          ),
                     onChanged: (val) => input['name'] = val,
                   ),
                 ),

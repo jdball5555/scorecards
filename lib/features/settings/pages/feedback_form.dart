@@ -6,11 +6,13 @@ import '../../../core/shared_widgets/sleek_notification_banner.dart';
 import '../../../services/optic_feedback_service.dart';
 import '../../../core/layout/responsive.dart';
 import 'package:scorecards_app/core/shared_widgets/top_bar_background.dart';
+import 'package:scorecards_app/features/premium/premium_beta.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Feedback location for "please add this game" requests.
 const kNewGameFeedbackLocation = 'New Game';
 
-class FeedbackFormScreen extends StatefulWidget {
+class FeedbackFormScreen extends ConsumerStatefulWidget {
   /// 'bug' or 'idea'.
   final String initialType;
 
@@ -42,10 +44,10 @@ class FeedbackFormScreen extends StatefulWidget {
   }
 
   @override
-  State<FeedbackFormScreen> createState() => _FeedbackFormScreenState();
+  ConsumerState<FeedbackFormScreen> createState() => _FeedbackFormScreenState();
 }
 
-class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
+class _FeedbackFormScreenState extends ConsumerState<FeedbackFormScreen> {
   final TextEditingController _feedbackController = TextEditingController();
 
   bool _isSubmitting = false;
@@ -73,6 +75,13 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
   ];
 
   static const _featuredIdeas = [kNewGameFeedbackLocation, 'New Page'];
+
+  // Template builder and rulebook scan are premium beta features.
+  static const _premiumLocations = {'Custom Builder', 'AI Rulebook Scan'};
+
+  List<String> get _visibleLocations => hasPremiumBeta(ref)
+      ? _locationOptions
+      : _locationOptions.where((l) => !_premiumLocations.contains(l)).toList();
 
   @override
   void initState() {
@@ -142,7 +151,8 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
         location: location,
         message: text,
         extra: {
-          'isNewPageIdea': _feedbackType == 'idea' && _ideaLocation == 'New Page',
+          'isNewPageIdea':
+              _feedbackType == 'idea' && _ideaLocation == 'New Page',
           'isGameRequest': _isGameRequest,
           if (usesTemplate) 'template': _selectedTemplate,
         },
@@ -282,8 +292,8 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
 
                   _buildTileGrid(
                     options: _feedbackType == 'idea'
-                        ? [..._featuredIdeas, ..._locationOptions]
-                        : _locationOptions,
+                        ? [..._featuredIdeas, ..._visibleLocations]
+                        : _visibleLocations,
                     selectedValue: _feedbackType == 'bug'
                         ? _bugLocation
                         : _ideaLocation,
@@ -297,8 +307,10 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
                       });
                     },
                   ),
-                  if ((_feedbackType == 'bug' && _bugLocation == 'Scoring Template') ||
-                      (_feedbackType == 'idea' && _ideaLocation == 'Scoring Template')) ...[
+                  if ((_feedbackType == 'bug' &&
+                          _bugLocation == 'Scoring Template') ||
+                      (_feedbackType == 'idea' &&
+                          _ideaLocation == 'Scoring Template')) ...[
                     const SizedBox(height: 24),
                     const Text(
                       "WHICH TEMPLATE?",
@@ -461,8 +473,7 @@ class _FeedbackFormScreenState extends State<FeedbackFormScreen> {
             final isBig = _featuredIdeas.contains(option);
             // Two columns on phones, more on wide screens.
             final cols = constraints.maxWidth > 560 ? 3 : 2;
-            final tileWidth =
-                (constraints.maxWidth - 12 * (cols - 1)) / cols;
+            final tileWidth = (constraints.maxWidth - 12 * (cols - 1)) / cols;
 
             return GestureDetector(
               onTap: () => onSelect(option),
