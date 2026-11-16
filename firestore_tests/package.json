@@ -1,0 +1,12 @@
+{
+  "name": "scorecards-firestore-rules-tests",
+  "private": true,
+  "description": "Tests for firestore.rules, run against the local Firestore emulator",
+  "scripts": {
+    "test": "cd .. && firebase emulators:exec --only firestore --project demo-scorecards \"node firestore_tests/rules.test.js firestore.rules\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.10.0"
+  }
+}

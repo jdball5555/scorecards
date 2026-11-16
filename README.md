@@ -2,7 +2,7 @@
 
 A Flutter app for keeping score in card and board games with friends. It has built-in scorecards for popular games, a template builder for any other game, and stats that sync across every player's device.
 
-**Live web app:** [scorecards.axisoptic.com](https://scorecards.axisoptic.com)
+**Live site:** [scorecards.axisoptic.com](https://scorecards.axisoptic.com)
 
 ![Scorecards home screen](docs/screenshots/home.png)
 
@@ -52,9 +52,10 @@ lib/
     settings/   preferences, mail inbox, feedback
   services/     Firestore and feedback services
 functions/
-  index.js      scorecard and invite notifications
+  index.js      scorecard and invite notifications, account lookup for invites
   optic.js      connection to the Optic developer dashboard
 firestore.rules database security rules
+firestore_tests/ tests for the security rules (Firestore emulator)
 test/           tests for templates, the rulebook parser, feedback, premium beta and stats
 ```
 
@@ -63,7 +64,11 @@ test/           tests for templates, the rulebook parser, feedback, premium beta
 1. Install the [Flutter SDK](https://docs.flutter.dev/get-started/install).
 2. Create a Firebase project and run `flutterfire configure`. The platform config files (`google-services.json`, `GoogleService-Info.plist`) are not included in the repo.
 3. Run `flutter pub get`, then `flutter run` (or `flutter run -d chrome` for the web version).
-4. Run tests with `flutter test`.
+4. Run tests with `flutter test`. The database rules tests run with `npm install && npm test` in `firestore_tests/` (needs Java for the Firestore emulator).
+
+## Security
+
+The Firestore rules deny everything the app doesn't need. Personal scorecards, mail, settings and templates are private to their owner. Only members can see a group and its scorecards. Joining a group takes an invite: a pending invite from a member, or an unused invite link. Profiles can't be listed or searched; a Cloud Function finds accounts by email for invites. In-app mail can only come from someone in the same group. Premium beta is a sign-in claim that only the server can set. The rules tests in `firestore_tests/` check that the app's normal actions are allowed and that each of these is enforced.
 
 ## Deployment
 
@@ -86,7 +91,7 @@ Scorecards connects to Axis Optic, my developer dashboard for my apps:
 
 ## Status
 
-**Current version: 1.0.0.** The app is in active development. Planned next: Apple sign-in and offline caching.
+**Current version: 1.0.1.** In active development. See the [changelog](CHANGELOG.md) for version history. Planned next: Apple sign-in and offline caching.
 
 ## License
 

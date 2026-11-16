@@ -61,3 +61,8 @@ skills-lock.json
 *serviceAccount*.json
 *.pem
 *.key
+
+# Firestore rules tests
+firestore_tests/node_modules/
+firestore-debug.log
+ui-debug.log

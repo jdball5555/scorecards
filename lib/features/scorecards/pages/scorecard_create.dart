@@ -159,7 +159,8 @@ class _ScorecardCreateDialogState extends ConsumerState<ScorecardCreateDialog> {
     try {
       final query = await FirebaseFirestore.instance
           .collection('scorecards')
-          .where('groupId', isEqualTo: groupId)
+          .where('ownerType', isEqualTo: 'group')
+          .where('ownerId', isEqualTo: groupId)
           .get();
 
       final Set<String> groupGames = {};

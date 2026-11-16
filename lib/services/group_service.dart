@@ -1,9 +1,19 @@
+import 'dart:convert';
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:math' as math;
+import 'package:http/http.dart' as http;
+
+/// Looks up an account by email. The database doesn't let the app search
+/// profiles, so this goes through a Cloud Function (functions/index.js).
+const _findUserByEmailUrl =
+    'https://us-central1-scorecards-app.cloudfunctions.net/findUserByEmail';
 
 class GroupService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  String get _myUid => FirebaseAuth.instance.currentUser?.uid ?? '';
 
   Future<void> createGroup(String name, String creatorUid) async {
     final docRef = _db.collection('game_groups').doc();
@@ -53,6 +63,8 @@ class GroupService {
             .doc();
         batch.set(mailRef, {
           'type': 'system_notice',
+          'groupId': groupId,
+          'senderUid': _myUid,
           'message':
               '$myName added local player "$playerName" to "$groupName".',
           'createdAt': FieldValue.serverTimestamp(),
@@ -100,6 +112,8 @@ class GroupService {
             .doc();
         batch.set(mailRef, {
           'type': 'system_notice',
+          'groupId': groupId,
+          'senderUid': _myUid,
           'message':
               '$myName removed local player "$playerName" from "$groupName".',
           'createdAt': FieldValue.serverTimestamp(),
@@ -159,6 +173,8 @@ class GroupService {
         .doc();
     batch.set(targetMailRef, {
       'type': 'system_notice',
+          'groupId': groupId,
+          'senderUid': _myUid,
       'message': 'You got kicked out of "$groupName" by $myName.',
       'createdAt': FieldValue.serverTimestamp(),
     });
@@ -183,6 +199,8 @@ class GroupService {
 
         batch.set(mailRef, {
           'type': 'system_notice',
+          'groupId': groupId,
+          'senderUid': _myUid,
           'message': noticeMessage,
           'createdAt': FieldValue.serverTimestamp(),
         });
@@ -213,6 +231,8 @@ class GroupService {
           .doc();
       batch.set(mailRef, {
         'type': 'system_notice',
+          'groupId': groupId,
+          'senderUid': _myUid,
         'message': memberId == uid
             ? 'You left the group "$groupName".'
             : '$myName left the group "$groupName".',
@@ -260,6 +280,8 @@ class GroupService {
 
         batch.set(mailRef, {
           'type': 'system_notice',
+          'groupId': groupId,
+          'senderUid': _myUid,
           'message': noticeMessage,
           'createdAt': FieldValue.serverTimestamp(),
         });
@@ -289,6 +311,8 @@ class GroupService {
           .doc();
       batch.set(mailRef, {
         'type': 'system_notice',
+          'groupId': groupId,
+          'senderUid': _myUid,
         'message': memberId == uid
             ? 'You deleted the group "$groupName".'
             : '$myName deleted the group "$groupName".',
@@ -296,6 +320,30 @@ class GroupService {
       });
     }
     await batch.commit();
+  }
+
+  /// The account with this email, or null if there isn't one.
+  Future<({String uid, String name})?> _findUserByEmail(String email) async {
+    final idToken = await FirebaseAuth.instance.currentUser!.getIdToken();
+    final res = await http
+        .post(
+          Uri.parse(_findUserByEmailUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $idToken',
+          },
+          body: jsonEncode({
+            'data': {'email': email},
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (res.statusCode != 200) {
+      throw Exception('findUserByEmail: ${res.statusCode}');
+    }
+    final result = (jsonDecode(res.body) as Map)['result'] as Map?;
+    final uid = result?['uid'] as String?;
+    if (uid == null) return null;
+    return (uid: uid, name: (result?['displayName'] as String?) ?? 'A player');
   }
 
   Future<String> sendInvite(
@@ -309,14 +357,16 @@ class GroupService {
     final cleanEmail = targetEmail.trim().toLowerCase();
     final senderUid = FirebaseAuth.instance.currentUser!.uid;
 
-    final userQuery = await _db
-        .collection('users')
-        .where('email', isEqualTo: cleanEmail)
-        .get();
-    if (userQuery.docs.isEmpty) return "No account found with that email.";
+    final ({String uid, String name})? target;
+    try {
+      target = await _findUserByEmail(cleanEmail);
+    } catch (_) {
+      return "Couldn't look up that email. Check your connection and try again.";
+    }
+    if (target == null) return "No account found with that email.";
 
-    final targetUid = userQuery.docs.first.id;
-    final targetName = userQuery.docs.first.data()['displayName'] ?? "A player";
+    final targetUid = target.uid;
+    final targetName = target.name;
 
     final groupDoc = await _db.collection('game_groups').doc(groupId).get();
     if (groupDoc.exists) {
@@ -370,76 +420,102 @@ class GroupService {
     return "Success";
   }
 
+  /// The group, or null if you can't see it (you're not a member, or it's
+  /// gone): only members can read a group.
+  Future<DocumentSnapshot<Map<String, dynamic>>?> _groupIfMember(
+    String groupId,
+  ) async {
+    try {
+      final doc = await _db.collection('game_groups').doc(groupId).get();
+      return doc.exists ? doc : null;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') return null;
+      rethrow;
+    }
+  }
+
+  /// Takes a local player out of a group's player lists (the account taking
+  /// their place is already a member). Returns the changes to save.
+  Map<String, dynamic> _withoutLocalPlayer(
+    Map<String, dynamic> group,
+    String localPlayerId,
+    String localPlayerName,
+    String uid,
+  ) {
+    bool isLocal(dynamic p) =>
+        (p is Map && p['id'] == localPlayerId) ||
+        p == localPlayerId ||
+        (localPlayerName.isNotEmpty && p == localPlayerName);
+
+    final update = <String, dynamic>{
+      'localMembers': List<dynamic>.from(group['localMembers'] ?? [])
+        ..removeWhere(isLocal),
+      'guests': List<dynamic>.from(group['guests'] ?? [])..removeWhere(isLocal),
+    };
+    // Hidden in scorecard creation? Keep them hidden as their account.
+    final hidden = List<String>.from(group['hiddenPlayers'] ?? []);
+    if (hidden.remove(localPlayerId)) {
+      if (!hidden.contains(uid)) hidden.add(uid);
+      update['hiddenPlayers'] = hidden;
+    }
+    return update;
+  }
+
   Future<void> acceptInvite(
     String inviteId,
     String groupId,
     String senderUid,
   ) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? "";
+    final uid = _myUid;
     final myName =
         FirebaseAuth.instance.currentUser?.displayName ?? "A new player";
 
-    final inviteDoc = await _db
+    final inviteRef = _db
         .collection('users')
         .doc(uid)
         .collection('mail')
-        .doc(inviteId)
-        .get();
-    final localPlayerIdToReplace = inviteDoc.data()?['localPlayerIdToReplace'];
-    final localPlayerNameToReplace = inviteDoc
-        .data()?['localPlayerNameToReplace'];
+        .doc(inviteId);
+    final inviteDoc = await inviteRef.get();
+    final localPlayerIdToReplace =
+        inviteDoc.data()?['localPlayerIdToReplace'] as String?;
+    final localPlayerNameToReplace =
+        inviteDoc.data()?['localPlayerNameToReplace'] as String?;
     final groupName = inviteDoc.data()?['groupName'] ?? "a group";
+    final groupRef = _db.collection('game_groups').doc(groupId);
 
-    final groupDoc = await _db.collection('game_groups').doc(groupId).get();
-    if (!groupDoc.exists) return;
+    // 1. Join. The database rules let you add yourself to a group only in
+    // the same write that accepts a pending invite to it.
+    var group = await _groupIfMember(groupId);
+    if (group == null) {
+      final join = _db.batch();
+      join.update(inviteRef, {'status': 'accepted'});
+      join.update(groupRef, {
+        'members': FieldValue.arrayUnion([uid]),
+        'joinedVia': {'type': 'mail', 'id': inviteId},
+      });
+      await join.commit();
+      group = await _groupIfMember(groupId);
+      if (group == null) return;
+    } else {
+      await inviteRef.update({'status': 'accepted'});
+    }
 
+    // 2. Now a member: take the local player's place and tell the group.
+    final data = group.data()!;
     final batch = _db.batch();
-
-    // Update ONLY the receiver's invite status to accepted
-    batch.update(
-      _db.collection('users').doc(uid).collection('mail').doc(inviteId),
-      {'status': 'accepted'},
-    );
-
-    final members = List<String>.from(groupDoc.data()?['members'] ?? []);
-    if (!members.contains(uid)) {
-      members.add(uid);
-    }
-
-    final updateData = <String, dynamic>{'members': members};
-
     if (localPlayerIdToReplace != null) {
-      final localMembers = List<dynamic>.from(
-        groupDoc.data()?['localMembers'] ?? [],
+      batch.update(
+        groupRef,
+        _withoutLocalPlayer(
+          data,
+          localPlayerIdToReplace,
+          localPlayerNameToReplace ?? '',
+          uid,
+        ),
       );
-      localMembers.removeWhere(
-        (p) =>
-            (p is Map && p['id'] == localPlayerIdToReplace) ||
-            p == localPlayerNameToReplace ||
-            p == localPlayerIdToReplace,
-      );
-      updateData['localMembers'] = localMembers;
-
-      final guests = List<dynamic>.from(groupDoc.data()?['guests'] ?? []);
-      guests.removeWhere(
-        (p) =>
-            (p is Map && p['id'] == localPlayerIdToReplace) ||
-            p == localPlayerNameToReplace ||
-            p == localPlayerIdToReplace,
-      );
-      updateData['guests'] = guests;
-
-      // Hidden in scorecard creation? Keep them hidden as their account.
-      final hidden = List<String>.from(groupDoc.data()?['hiddenPlayers'] ?? []);
-      if (hidden.remove(localPlayerIdToReplace)) {
-        if (!hidden.contains(uid)) hidden.add(uid);
-        updateData['hiddenPlayers'] = hidden;
-      }
     }
 
-    batch.update(_db.collection('game_groups').doc(groupId), updateData);
-
-    // Notify everyone (including the specific message for the sender)
+    final members = List<String>.from(data['members'] ?? []);
     for (String memberId in members) {
       if (memberId == uid) continue;
 
@@ -452,21 +528,17 @@ class GroupService {
             : '$myName has joined the group "$groupName"!';
       }
 
-      final mailRef = _db
-          .collection('users')
-          .doc(memberId)
-          .collection('mail')
-          .doc();
-      batch.set(mailRef, {
+      batch.set(_db.collection('users').doc(memberId).collection('mail').doc(), {
         'type': 'system_notice',
+        'groupId': groupId,
+        'senderUid': uid,
         'message': noticeMsg,
         'createdAt': FieldValue.serverTimestamp(),
       });
     }
-
     await batch.commit();
 
-    // Now a member: the local player's past games in this group become theirs.
+    // The local player's past games in this group become theirs.
     if (localPlayerIdToReplace != null) {
       await moveLocalHistoryToAccount(
         groupId: groupId,
@@ -493,26 +565,12 @@ class GroupService {
     final groupRef = _db.collection('game_groups').doc(groupId);
     final groupDoc = await groupRef.get();
     if (!groupDoc.exists) return;
-    final data = groupDoc.data()!;
-
-    bool isLocal(dynamic p) =>
-        (p is Map && p['id'] == localPlayerId) ||
-        p == localPlayerId ||
-        (localPlayerName.isNotEmpty && p == localPlayerName);
-
-    final localMembers = List<dynamic>.from(data['localMembers'] ?? [])
-      ..removeWhere(isLocal);
-    final guests = List<dynamic>.from(data['guests'] ?? [])
-      ..removeWhere(isLocal);
-    final update = <String, dynamic>{
-      'localMembers': localMembers,
-      'guests': guests,
-    };
-    final hidden = List<String>.from(data['hiddenPlayers'] ?? []);
-    if (hidden.remove(localPlayerId)) {
-      if (!hidden.contains(memberUid)) hidden.add(memberUid);
-      update['hiddenPlayers'] = hidden;
-    }
+    final update = _withoutLocalPlayer(
+      groupDoc.data()!,
+      localPlayerId,
+      localPlayerName,
+      memberUid,
+    );
 
     final batch = _db.batch();
     batch.update(groupRef, update);
@@ -521,6 +579,8 @@ class GroupService {
         _db.collection('users').doc(memberUid).collection('mail').doc(),
         {
           'type': 'system_notice',
+          'groupId': groupId,
+          'senderUid': _myUid,
           'message':
               '$myName linked the local player "$localPlayerName" in "$groupName" to your account. Their games are now yours.',
           'createdAt': FieldValue.serverTimestamp(),
@@ -580,8 +640,8 @@ class GroupService {
 
   /// Accepts an invite link for the signed-in account: they join the group
   /// in the local player's place and the player's past games become theirs.
-  /// Returns the group and player names. Throws [InviteProblem]-style
-  /// messages (as a String) when the link can't be used.
+  /// Returns the group and player names. Throws a message (as a String)
+  /// when the link can't be used.
   Future<({String groupName, String playerName, bool alreadyDone})>
   claimInviteLink(String token) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -609,21 +669,6 @@ class GroupService {
       throw "This invite link has already been used.";
     }
 
-    final groupRef = _db.collection('game_groups').doc(groupId);
-    final groupDoc = await groupRef.get();
-    if (!groupDoc.exists) throw "That group doesn't exist anymore.";
-    final data = groupDoc.data()!;
-
-    bool isLocal(dynamic p) =>
-        (p is Map && p['id'] == localId) ||
-        p == localId ||
-        (localName.isNotEmpty && p == localName);
-    final localMembers = List<dynamic>.from(data['localMembers'] ?? []);
-    final guests = List<dynamic>.from(data['guests'] ?? []);
-    if (!localMembers.any(isLocal) && !guests.any(isLocal)) {
-      throw "$localName isn't in $groupName anymore, so this link doesn't work.";
-    }
-
     // No name yet (new account)? Take the player's.
     var myName = (me.displayName ?? '').trim();
     if (myName.isEmpty && localName.isNotEmpty) {
@@ -637,8 +682,9 @@ class GroupService {
       } catch (_) {}
     }
 
-    final members = List<String>.from(data['members'] ?? []);
-    if (members.contains(uid)) {
+    final groupRef = _db.collection('game_groups').doc(groupId);
+    final existing = await _groupIfMember(groupId);
+    if (existing != null) {
       // Already in the group: merge the local player into them.
       await linkLocalPlayerToMember(
         groupId: groupId,
@@ -655,29 +701,41 @@ class GroupService {
       return (groupName: groupName, playerName: localName, alreadyDone: false);
     }
 
-    localMembers.removeWhere(isLocal);
-    guests.removeWhere(isLocal);
-    final update = <String, dynamic>{
+    // 1. Join. The database rules let you add yourself to a group only in
+    // the same write that uses up an invite link to it.
+    final join = _db.batch();
+    join.update(groupRef, {
       'members': FieldValue.arrayUnion([uid]),
-      'localMembers': localMembers,
-      'guests': guests,
-    };
-    final hidden = List<String>.from(data['hiddenPlayers'] ?? []);
-    if (hidden.remove(localId)) {
-      if (!hidden.contains(uid)) hidden.add(uid);
-      update['hiddenPlayers'] = hidden;
-    }
-
-    final batch = _db.batch();
-    batch.update(groupRef, update);
-    batch.update(inviteRef, {
+      'joinedVia': {'type': 'link', 'id': token},
+    });
+    join.update(inviteRef, {
       'usedBy': uid,
       'usedAt': FieldValue.serverTimestamp(),
     });
+    try {
+      await join.commit();
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied' || e.code == 'not-found') {
+        throw "That group doesn't exist anymore, so this link doesn't work.";
+      }
+      rethrow;
+    }
+
+    // 2. Now a member: take the player's place and tell the group.
+    final group = await _groupIfMember(groupId);
+    if (group == null) {
+      return (groupName: groupName, playerName: localName, alreadyDone: false);
+    }
+    final data = group.data()!;
+    final batch = _db.batch();
+    batch.update(groupRef, _withoutLocalPlayer(data, localId, localName, uid));
     final who = myName.isEmpty ? 'Someone' : myName;
-    for (final memberId in members) {
+    for (final memberId in List<String>.from(data['members'] ?? [])) {
+      if (memberId == uid) continue;
       batch.set(_db.collection('users').doc(memberId).collection('mail').doc(), {
         'type': 'system_notice',
+        'groupId': groupId,
+        'senderUid': uid,
         'message':
             '$who joined "$groupName" with an invite link and is now "$localName". Their past games came with them.',
         'createdAt': FieldValue.serverTimestamp(),

@@ -290,5 +290,29 @@ exports.onScorecardFinalized = functions.firestore
     return null;
   });
 
+// Find an account by email, for group invites. The database rules don't let
+// the app search profiles, so the app asks this instead. Only signed-in
+// users can call it, and it only says who the account is (id and name).
+exports.findUserByEmail = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Sign in first.");
+  }
+  const email = String((data && data.email) || "").trim().toLowerCase();
+  if (!email || email.length > 254 || !email.includes("@")) {
+    throw new functions.https.HttpsError("invalid-argument", "Enter an email.");
+  }
+  let user;
+  try {
+    user = await admin.auth().getUserByEmail(email);
+  } catch (e) {
+    if (e.code === "auth/user-not-found") return { uid: null };
+    console.error("findUserByEmail:", e);
+    throw new functions.https.HttpsError("internal", "Lookup failed.");
+  }
+  const profile = await db.collection("users").doc(user.uid).get();
+  const name = (profile.exists && profile.data().displayName) || user.displayName || "A player";
+  return { uid: user.uid, displayName: name };
+});
+
 // Optic developer app: new-user alerts and user admin (see optic.js).
 Object.assign(exports, require("./optic"));

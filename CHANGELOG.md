@@ -3,6 +3,23 @@
 All notable changes to this project are listed here, newest first.
 Versions follow [Semantic Versioning](https://semver.org): **major** for redesigns, **minor** for new features, **patch** for fixes.
 
+## [1.0.1] — 2026-11-16
+
+### Security
+- Database rules rewritten so each person only reaches what the app needs: personal scorecards, mail, settings and templates are private to their owner, groups and their scorecards are visible only to members, and joining a group needs a real invite (a pending invite from a member, or an unused invite link)
+- Profiles can no longer be listed or searched; finding an account by email for an invite goes through a new Cloud Function
+- In-app mail and notifications can only come from someone in the same group, and premium beta can't be switched on from the app
+- Removed two old one-time admin tools from the Axis migration screen that worked across everyone's scorecards
+
+### Added
+- Tests for the database rules, run against the Firestore emulator (`firestore_tests/`)
+
+### Changed
+- Accepting an invite joins the group first, then takes the local player's place, so the rules can check the invite
+
+### Fixed
+- New scorecards not offering the custom games a group has already played
+
 ## [1.0.0] — 2026-11-15
 
 ### Added
@@ -56,6 +73,7 @@ Versions follow [Semantic Versioning](https://semver.org): **major** for redesig
 - Game groups and invitations
 - Feature-first project structure
 
-[1.0.0]: https://github.com/jdball5555/scorecards-app/compare/v0.2.0...v1.0.0
-[0.2.0]: https://github.com/jdball5555/scorecards-app/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/jdball5555/scorecards-app/releases/tag/v0.1.0
+[1.0.1]: https://github.com/jdball5555/scorecards/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/jdball5555/scorecards/compare/v0.2.0...v1.0.0
+[0.2.0]: https://github.com/jdball5555/scorecards/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/jdball5555/scorecards/releases/tag/v0.1.0
