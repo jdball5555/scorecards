@@ -3,6 +3,11 @@
 All notable changes to this project are listed here, newest first.
 Versions follow [Semantic Versioning](https://semver.org): **major** for redesigns, **minor** for new features, **patch** for fixes.
 
+## [1.0.2] — 2026-11-22
+
+### Fixed
+- Spades ignoring the 1st and 2nd bidder picked during setup: quick bid and the highlighted starting bidder now follow the chosen order, games already in progress pick it up, and rematches keep it
+
 ## [1.0.1] — 2026-11-16
 
 ### Security

@@ -693,6 +693,17 @@ class _ScorecardSetupDialogState extends State<ScorecardSetupDialog> {
       initialRound['buyIn'] = 2;
     }
 
+    // Spades reads the bidding order from round 1 (also what rematches copy),
+    // so carry the 1st/2nd bidder chosen in setup into it.
+    if (widget.gameType.toLowerCase() == 'spades') {
+      for (final key in ['firstBidder', 'secondBidder']) {
+        final value = _templateSettings[key];
+        if (value != null && _playerNames.contains(value)) {
+          initialRound[key] = value;
+        }
+      }
+    }
+
     if (widget.gameType.toLowerCase() == 'wavelength') {
       int numTeams = _playerNames.length ~/ 2;
       for (int t = 1; t <= numTeams; t++) {

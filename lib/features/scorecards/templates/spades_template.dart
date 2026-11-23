@@ -495,15 +495,20 @@ class SpadesTemplate extends GameTemplate {
   List<String> _getBiddingOrder(
     List<String> playerNames,
     List<Map<String, dynamic>> rounds,
+    Map<String, dynamic> customSettings,
   ) {
     if (playerNames.length < 4) return playerNames;
     String? s1;
     String? s2;
 
     if (rounds.isNotEmpty) {
-      s1 = rounds.first['firstBidder'];
-      s2 = rounds.first['secondBidder'];
+      s1 = rounds.first['firstBidder']?.toString();
+      s2 = rounds.first['secondBidder']?.toString();
     }
+    // Setup stores the chosen order in customSettings; older games only have
+    // it there, so fall back to it when round 1 doesn't carry the order.
+    s1 ??= customSettings['firstBidder']?.toString();
+    s2 ??= customSettings['secondBidder']?.toString();
 
     List<String> t1 = [playerNames[0], playerNames[1]];
     List<String> t2 = [playerNames[2], playerNames[3]];
@@ -534,7 +539,11 @@ class SpadesTemplate extends GameTemplate {
     Map<String, dynamic> customSettings,
     VoidCallback onDataChanged,
   ) {
-    List<String> baseOrder = _getBiddingOrder(playerNames, rounds);
+    List<String> baseOrder = _getBiddingOrder(
+      playerNames,
+      rounds,
+      customSettings,
+    );
     List<String> roundOrder = [];
     for (int i = 0; i < 4; i++) {
       roundOrder.add(baseOrder[(roundIndex + i) % 4]);
@@ -1731,7 +1740,7 @@ class SpadesTemplate extends GameTemplate {
     final bid = rounds[roundIndex]['p${playerIndex + 1}Bid'];
 
     final bool isQuickBid = customSettings['quickBidEnabled'] == true;
-    List<String> baseOrder = _getBiddingOrder(names, rounds);
+    List<String> baseOrder = _getBiddingOrder(names, rounds, customSettings);
     String expectedStartPlayer = baseOrder.isNotEmpty
         ? baseOrder[roundIndex % baseOrder.length]
         : "";
