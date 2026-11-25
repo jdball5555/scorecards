@@ -160,6 +160,10 @@ class _SpecificMetricScreenState extends State<SpecificMetricScreen> {
     }
 
     final side = readableSide(context, maxWidth: 920);
+    // In a split screen pane the subtitle is hidden so the top bar matches
+    // the other pane's.
+    final inSplit = SplitPaneScope.maybeOf(context) != null;
+    final double subtitleHeight = inSplit ? 0 : 40;
     return GradientBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -183,25 +187,30 @@ class _SpecificMetricScreenState extends State<SpecificMetricScreen> {
           ),
           centerTitle: false,
           flexibleSpace: const TopBarBackground(),
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(40),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Text(
-                "${widget.scopeDisplay}  •  ${widget.gameTypeDisplay}  •  ${widget.playerDisplay}",
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
+          bottom: inSplit
+              ? null
+              : PreferredSize(
+                  preferredSize: const Size.fromHeight(40),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    child: Text(
+                      "${widget.scopeDisplay}  •  ${widget.gameTypeDisplay}  •  ${widget.playerDisplay}",
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ),
         ),
         body: _all.isEmpty
             ? const Center(
@@ -213,7 +222,10 @@ class _SpecificMetricScreenState extends State<SpecificMetricScreen> {
             : ListView(
                 padding: EdgeInsets.fromLTRB(
                   side,
-                  MediaQuery.paddingOf(context).top + kToolbarHeight + 40 + 16,
+                  MediaQuery.paddingOf(context).top +
+                      kToolbarHeight +
+                      subtitleHeight +
+                      16,
                   side,
                   40,
                 ),

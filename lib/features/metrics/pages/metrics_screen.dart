@@ -1196,17 +1196,28 @@ class _MetricsScreenState extends State<MetricsScreen> {
         .where((t) => relevantTiles.contains(t) && !_hiddenTiles.contains(t))
         .toList();
 
+    // In split screen the subtitle (scope, game, comparison) is hidden so
+    // every pane's top bar is the same height; the tune button opens the
+    // same settings.
+    final double subtitleHeight = widget.isEmbedded ? 0 : 40;
+
     Widget bodyContent = _isLoading
         ? const Center(child: CircularProgressIndicator(color: _themeBlue))
         : RefreshIndicator(
             edgeOffset:
-                MediaQuery.of(context).padding.top + kToolbarHeight + 40,
+                MediaQuery.of(context).padding.top +
+                kToolbarHeight +
+                subtitleHeight,
             color: _themeBlue,
             backgroundColor: const Color(0xFF1E1E1E),
             onRefresh: _refreshMetrics,
             child: ListView(
               padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + kToolbarHeight + 60,
+                top:
+                    MediaQuery.of(context).padding.top +
+                    kToolbarHeight +
+                    subtitleHeight +
+                    20,
                 left: 20,
                 right: 20,
                 bottom: 16,
@@ -1304,34 +1315,36 @@ class _MetricsScreenState extends State<MetricsScreen> {
           const SizedBox(width: 8),
         ],
         flexibleSpace: const TopBarBackground(),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(40),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: _openCustomizeScreen,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                child: Text(
-                  "${_scopeDisplay()}  •  $_selectedGameType  •  $compareSubtitle",
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
+        bottom: widget.isEmbedded
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(40),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _openCustomizeScreen,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      child: Text(
+                        "${_scopeDisplay()}  •  $_selectedGameType  •  $compareSubtitle",
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-        ),
       ),
       body: bodyContent,
     );

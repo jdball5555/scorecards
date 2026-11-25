@@ -3,6 +3,19 @@
 All notable changes to this project are listed here, newest first.
 Versions follow [Semantic Versioning](https://semver.org): **major** for redesigns, **minor** for new features, **patch** for fixes.
 
+## [1.0.3] — 2026-11-25
+
+### Changed
+- Split screen redesigned: the two pages sit edge to edge with no black bar between them, separated by a thin line with a small six-dot grip for resizing
+- On the website, the left pane keeps the frame's rounded corner and sidebar border; stacked panes round the top page's bottom-left corner into the divider
+- In split screen, Metrics and its stat pages hide the scope / game / player subtitle so both panes' top bars line up (the tune button opens the same settings)
+- Each pane lays out for its own width, so the Customize Scorecard tiles fill their pane, and the divider stops where a page would no longer fit
+- Stacked split screen puts the scorecard on top again (Flip Screens swaps it)
+
+### Fixed
+- The website's left border line stopping at the scorecard's bottom bar instead of running to the bottom of the page
+- In the app, split screen panes reserving space for the notch or home indicator on edges they don't touch
+
 ## [1.0.2] — 2026-11-22
 
 ### Fixed

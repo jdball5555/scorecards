@@ -1067,345 +1067,361 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
       // DYNAMIC NAVIGATION BAR
       bottomNavigationBar: _isViewingMode
           ? const SizedBox.shrink()
-          : ClipRRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.4),
-                    border: Border(
-                      top: BorderSide(
-                        color: Colors.white.withOpacity(0.1),
-                        width: 1,
+          // The website frame's left border runs down through this bar.
+          : SiteLeftEdgeLine(
+              child: ClipRRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.4),
+                      border: Border(
+                        top: BorderSide(
+                          color: Colors.white.withOpacity(0.1),
+                          width: 1,
+                        ),
                       ),
                     ),
-                  ),
-                  child: SafeArea(
-                    child: SizedBox(
-                      height: 70,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          if (widget.gameType.toLowerCase() == 'yahtzee') ...[
-                            Builder(
-                              builder: (context) {
-                                int currentRound = _rounds.length;
+                    child: SafeArea(
+                      child: SizedBox(
+                        height: 70,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            if (widget.gameType.toLowerCase() == 'yahtzee') ...[
+                              Builder(
+                                builder: (context) {
+                                  int currentRound = _rounds.length;
 
-                                bool allFilled = true;
-                                for (int p = 0; p < _playerNames.length; p++) {
-                                  int count = 0;
-                                  for (var r in _rounds) {
-                                    String? cat =
-                                        r['p${p + 1}Category'] ?? r['category'];
-                                    if (cat != null && cat != 'YAHTZEE BONUS') {
-                                      count++;
+                                  bool allFilled = true;
+                                  for (
+                                    int p = 0;
+                                    p < _playerNames.length;
+                                    p++
+                                  ) {
+                                    int count = 0;
+                                    for (var r in _rounds) {
+                                      String? cat =
+                                          r['p${p + 1}Category'] ??
+                                          r['category'];
+                                      if (cat != null &&
+                                          cat != 'YAHTZEE BONUS') {
+                                        count++;
+                                      }
+                                    }
+                                    if (count < currentRound) {
+                                      allFilled = false;
+                                      break;
                                     }
                                   }
-                                  if (count < currentRound) {
-                                    allFilled = false;
-                                    break;
-                                  }
-                                }
 
-                                int displayRound = currentRound > 13
-                                    ? 13
-                                    : currentRound;
+                                  int displayRound = currentRound > 13
+                                      ? 13
+                                      : currentRound;
 
-                                bool isLastRound = currentRound >= 13;
+                                  bool isLastRound = currentRound >= 13;
 
-                                return Expanded(
-                                  child: TextButton.icon(
-                                    icon: Icon(
-                                      isLastRound
-                                          ? Icons.check_circle
-                                          : Icons.check_circle_outline,
-                                      color: allFilled
-                                          ? (isLastRound
-                                                ? customPurple
-                                                : primaryBlue)
-                                          : Colors.white24,
-                                      size: 18,
-                                    ),
-                                    label: FittedBox(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            isLastRound
-                                                ? "FINALIZE GAME"
-                                                : "FINALIZE RND",
-                                            style: TextStyle(
-                                              color: allFilled
-                                                  ? (isLastRound
-                                                        ? customPurple
-                                                        : primaryBlue)
-                                                  : Colors.white24,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          if (!isLastRound)
+                                  return Expanded(
+                                    child: TextButton.icon(
+                                      icon: Icon(
+                                        isLastRound
+                                            ? Icons.check_circle
+                                            : Icons.check_circle_outline,
+                                        color: allFilled
+                                            ? (isLastRound
+                                                  ? customPurple
+                                                  : primaryBlue)
+                                            : Colors.white24,
+                                        size: 18,
+                                      ),
+                                      label: FittedBox(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
                                             Text(
-                                              "$displayRound/13",
+                                              isLastRound
+                                                  ? "FINALIZE GAME"
+                                                  : "FINALIZE RND",
                                               style: TextStyle(
                                                 color: allFilled
-                                                    ? primaryBlue.withOpacity(
-                                                        0.8,
-                                                      )
+                                                    ? (isLastRound
+                                                          ? customPurple
+                                                          : primaryBlue)
                                                     : Colors.white24,
-                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
                                               ),
                                             ),
-                                        ],
-                                      ),
-                                    ),
-                                    onPressed: allFilled
-                                        ? () {
-                                            if (isLastRound) {
-                                              _handleFinalizeGame();
-                                            } else {
-                                              setState(() {
-                                                if (_rounds.isEmpty) {
-                                                  _rounds.add({'roundNum': 1});
-                                                }
-                                                if (_rounds[0].containsKey(
-                                                  'currentYahtzeeRound',
-                                                )) {
-                                                  _rounds[0].remove(
-                                                    'currentYahtzeeRound',
-                                                  );
-                                                }
-                                                _rounds.add({
-                                                  'roundNum': currentRound + 1,
-                                                });
-                                                _isSynced = false;
-                                              });
-                                              _onTemplateDataChanged();
-                                            }
-                                          }
-                                        : null,
-                                  ),
-                                );
-                              },
-                            ),
-                          ] else ...[
-                            if (!_template.autoManagesRounds) ...[
-                              // --- REMOVE ROUND ---
-                              Expanded(
-                                child: TextButton.icon(
-                                  icon: const Icon(
-                                    Icons.remove_circle_outline,
-                                    color: Colors.redAccent,
-                                    size: 18,
-                                  ),
-                                  label: const FittedBox(
-                                    child: Text(
-                                      "REMOVE ROUND",
-                                      style: TextStyle(
-                                        color: Colors.redAccent,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  onPressed: () async {
-                                    if (_rounds.length > 1) {
-                                      final roundToRemove = _rounds.last;
-                                      bool shouldRemove = true;
-
-                                      if (!_isRoundEmpty(roundToRemove)) {
-                                        shouldRemove =
-                                            await showDialog<bool>(
-                                              context: context,
-                                              builder: (ctx) => AlertDialog(
-                                                backgroundColor: const Color(
-                                                  0xFF1E1E1E,
+                                            if (!isLastRound)
+                                              Text(
+                                                "$displayRound/13",
+                                                style: TextStyle(
+                                                  color: allFilled
+                                                      ? primaryBlue.withOpacity(
+                                                          0.8,
+                                                        )
+                                                      : Colors.white24,
+                                                  fontSize: 10,
                                                 ),
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(16),
-                                                ),
-                                                title: const Text(
-                                                  "Remove Round?",
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                                content: const Text(
-                                                  "This round already contains data. Are you sure you want to remove it?",
-                                                  style: TextStyle(
-                                                    color: Colors.white70,
-                                                  ),
-                                                ),
-                                                actions: [
-                                                  TextButton(
-                                                    onPressed: () =>
-                                                        Navigator.pop(
-                                                          ctx,
-                                                          false,
-                                                        ),
-                                                    child: const Text(
-                                                      "Cancel",
-                                                      style: TextStyle(
-                                                        color: Colors.white54,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  ElevatedButton(
-                                                    style:
-                                                        ElevatedButton.styleFrom(
-                                                          backgroundColor:
-                                                              Colors.redAccent,
-                                                        ),
-                                                    onPressed: () =>
-                                                        Navigator.pop(
-                                                          ctx,
-                                                          true,
-                                                        ),
-                                                    child: const Text(
-                                                      "REMOVE",
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
                                               ),
-                                            ) ??
-                                            false;
-                                      }
-
-                                      if (shouldRemove) {
-                                        setState(() {
-                                          _rounds.removeLast();
-                                          _template.onRoundRemoved(_rounds);
-                                          _isSynced = false;
-                                        });
-                                        _saveData();
-                                      }
-                                    }
-                                  },
-                                ),
-                              ),
-                              // --- ADD ROUND ---
-                              Expanded(
-                                child: TextButton.icon(
-                                  icon: const Icon(
-                                    Icons.add_circle_outline,
-                                    color: Colors.white,
-                                    size: 18,
-                                  ),
-                                  label: const FittedBox(
-                                    child: Text(
-                                      "ADD ROUND",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  onPressed: () {
-                                    if (!_template.canAddRound(
-                                      _rounds,
-                                      _playerNames.length,
-                                      customSettings: _customSettings,
-                                    )) {
-                                      if (_template is SpadesTemplate &&
-                                          _rounds.isNotEmpty) {
-                                        final spades =
-                                            _template as SpadesTemplate;
-                                        if (!spades.isRoundMathValid(
-                                          _rounds.last,
-                                        )) {
-                                          SleekNotificationBanner.show(
-                                            "Invalid Hand Scores",
-                                            "The total tricks don't add up to exactly 13. Please check your bags and sets before adding a round.",
-                                            icon: Icons.calculate,
-                                            color: Colors.redAccent,
-                                          );
-                                          return;
-                                        }
-                                      }
-
-                                      SleekNotificationBanner.show(
-                                        "Incomplete Round",
-                                        "Please completely fill out the previous round before adding a new one.",
-                                        icon: Icons.warning_amber_rounded,
-                                        color: Colors.orangeAccent,
-                                      );
-                                      return;
-                                    }
-                                    setState(() {
-                                      _rounds.add(
-                                        _template.createNewRound(
-                                          _rounds.length + 1,
-                                          _playerNames.length,
+                                          ],
                                         ),
-                                      );
-                                      if (widget.gameType.toLowerCase() ==
-                                          'poker') {
-                                        int prevBuyIn = 2;
-                                        if (_rounds.length > 1) {
-                                          prevBuyIn =
-                                              int.tryParse(
-                                                _rounds[_rounds.length -
-                                                            2]['buyIn']
-                                                        ?.toString() ??
-                                                    '2',
-                                              ) ??
-                                              2;
-                                        }
-                                        _rounds.last['buyIn'] = prevBuyIn;
-                                      }
-                                      _template.recalculateTotals(
-                                        _rounds,
-                                        _playerNames.length,
-                                        customSettings: _customSettings,
-                                      );
-                                      _isSynced = false;
-                                    });
-                                    _saveData();
-                                  },
-                                ),
+                                      ),
+                                      onPressed: allFilled
+                                          ? () {
+                                              if (isLastRound) {
+                                                _handleFinalizeGame();
+                                              } else {
+                                                setState(() {
+                                                  if (_rounds.isEmpty) {
+                                                    _rounds.add({
+                                                      'roundNum': 1,
+                                                    });
+                                                  }
+                                                  if (_rounds[0].containsKey(
+                                                    'currentYahtzeeRound',
+                                                  )) {
+                                                    _rounds[0].remove(
+                                                      'currentYahtzeeRound',
+                                                    );
+                                                  }
+                                                  _rounds.add({
+                                                    'roundNum':
+                                                        currentRound + 1,
+                                                  });
+                                                  _isSynced = false;
+                                                });
+                                                _onTemplateDataChanged();
+                                              }
+                                            }
+                                          : null,
+                                    ),
+                                  );
+                                },
                               ),
-                            ],
-                            // --- FINALIZE GAME ---
-                            Expanded(
-                              child: Builder(
-                                builder: (context) {
-                                  bool canFinalize = _template
-                                      .isReadyToFinalize(
-                                        _rounds,
-                                        _playerNames.length,
-                                        customSettings: _customSettings,
-                                      );
-                                  return TextButton.icon(
-                                    icon: Icon(
-                                      Icons.check_circle,
-                                      color: canFinalize
-                                          ? customPurple
-                                          : Colors.white24,
+                            ] else ...[
+                              if (!_template.autoManagesRounds) ...[
+                                // --- REMOVE ROUND ---
+                                Expanded(
+                                  child: TextButton.icon(
+                                    icon: const Icon(
+                                      Icons.remove_circle_outline,
+                                      color: Colors.redAccent,
                                       size: 18,
                                     ),
-                                    label: FittedBox(
+                                    label: const FittedBox(
                                       child: Text(
-                                        "FINALIZE",
+                                        "REMOVE ROUND",
                                         style: TextStyle(
-                                          color: canFinalize
-                                              ? customPurple
-                                              : Colors.white24,
+                                          color: Colors.redAccent,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
                                     ),
-                                    onPressed: _handleFinalizeGame,
-                                  );
-                                },
+                                    onPressed: () async {
+                                      if (_rounds.length > 1) {
+                                        final roundToRemove = _rounds.last;
+                                        bool shouldRemove = true;
+
+                                        if (!_isRoundEmpty(roundToRemove)) {
+                                          shouldRemove =
+                                              await showDialog<bool>(
+                                                context: context,
+                                                builder: (ctx) => AlertDialog(
+                                                  backgroundColor: const Color(
+                                                    0xFF1E1E1E,
+                                                  ),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          16,
+                                                        ),
+                                                  ),
+                                                  title: const Text(
+                                                    "Remove Round?",
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  content: const Text(
+                                                    "This round already contains data. Are you sure you want to remove it?",
+                                                    style: TextStyle(
+                                                      color: Colors.white70,
+                                                    ),
+                                                  ),
+                                                  actions: [
+                                                    TextButton(
+                                                      onPressed: () =>
+                                                          Navigator.pop(
+                                                            ctx,
+                                                            false,
+                                                          ),
+                                                      child: const Text(
+                                                        "Cancel",
+                                                        style: TextStyle(
+                                                          color: Colors.white54,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    ElevatedButton(
+                                                      style:
+                                                          ElevatedButton.styleFrom(
+                                                            backgroundColor:
+                                                                Colors
+                                                                    .redAccent,
+                                                          ),
+                                                      onPressed: () =>
+                                                          Navigator.pop(
+                                                            ctx,
+                                                            true,
+                                                          ),
+                                                      child: const Text(
+                                                        "REMOVE",
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ) ??
+                                              false;
+                                        }
+
+                                        if (shouldRemove) {
+                                          setState(() {
+                                            _rounds.removeLast();
+                                            _template.onRoundRemoved(_rounds);
+                                            _isSynced = false;
+                                          });
+                                          _saveData();
+                                        }
+                                      }
+                                    },
+                                  ),
+                                ),
+                                // --- ADD ROUND ---
+                                Expanded(
+                                  child: TextButton.icon(
+                                    icon: const Icon(
+                                      Icons.add_circle_outline,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                    label: const FittedBox(
+                                      child: Text(
+                                        "ADD ROUND",
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      if (!_template.canAddRound(
+                                        _rounds,
+                                        _playerNames.length,
+                                        customSettings: _customSettings,
+                                      )) {
+                                        if (_template is SpadesTemplate &&
+                                            _rounds.isNotEmpty) {
+                                          final spades =
+                                              _template as SpadesTemplate;
+                                          if (!spades.isRoundMathValid(
+                                            _rounds.last,
+                                          )) {
+                                            SleekNotificationBanner.show(
+                                              "Invalid Hand Scores",
+                                              "The total tricks don't add up to exactly 13. Please check your bags and sets before adding a round.",
+                                              icon: Icons.calculate,
+                                              color: Colors.redAccent,
+                                            );
+                                            return;
+                                          }
+                                        }
+
+                                        SleekNotificationBanner.show(
+                                          "Incomplete Round",
+                                          "Please completely fill out the previous round before adding a new one.",
+                                          icon: Icons.warning_amber_rounded,
+                                          color: Colors.orangeAccent,
+                                        );
+                                        return;
+                                      }
+                                      setState(() {
+                                        _rounds.add(
+                                          _template.createNewRound(
+                                            _rounds.length + 1,
+                                            _playerNames.length,
+                                          ),
+                                        );
+                                        if (widget.gameType.toLowerCase() ==
+                                            'poker') {
+                                          int prevBuyIn = 2;
+                                          if (_rounds.length > 1) {
+                                            prevBuyIn =
+                                                int.tryParse(
+                                                  _rounds[_rounds.length -
+                                                              2]['buyIn']
+                                                          ?.toString() ??
+                                                      '2',
+                                                ) ??
+                                                2;
+                                          }
+                                          _rounds.last['buyIn'] = prevBuyIn;
+                                        }
+                                        _template.recalculateTotals(
+                                          _rounds,
+                                          _playerNames.length,
+                                          customSettings: _customSettings,
+                                        );
+                                        _isSynced = false;
+                                      });
+                                      _saveData();
+                                    },
+                                  ),
+                                ),
+                              ],
+                              // --- FINALIZE GAME ---
+                              Expanded(
+                                child: Builder(
+                                  builder: (context) {
+                                    bool canFinalize = _template
+                                        .isReadyToFinalize(
+                                          _rounds,
+                                          _playerNames.length,
+                                          customSettings: _customSettings,
+                                        );
+                                    return TextButton.icon(
+                                      icon: Icon(
+                                        Icons.check_circle,
+                                        color: canFinalize
+                                            ? customPurple
+                                            : Colors.white24,
+                                        size: 18,
+                                      ),
+                                      label: FittedBox(
+                                        child: Text(
+                                          "FINALIZE",
+                                          style: TextStyle(
+                                            color: canFinalize
+                                                ? customPurple
+                                                : Colors.white24,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      onPressed: _handleFinalizeGame,
+                                    );
+                                  },
+                                ),
                               ),
-                            ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
