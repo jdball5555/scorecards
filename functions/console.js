@@ -1,19 +1,19 @@
-// Optic integration: lets the Optic developer app (Axis Team's Firebase
-// project) see and manage Scorecards.
+// Console integration: lets Console, Axis Optic's developer app (Firebase
+// project axis-optic-ce4f2), see and manage Scorecards.
 //
-//   opticNewUser  a new Scorecards account -> "new user" alert in Optic
-//   opticAdmin    Optic's user admin: list users, view a user, change their
-//                 settings (name, email, sign-in, notifications, premium beta)
+//   consoleNewUser  a new Scorecards account -> "new user" alert in Console
+//   consoleAdmin    Console's user admin: list users, view a user, change their
+//                  settings (name, email, sign-in, notifications, premium beta)
 //
 // Both directions use Google-signed identity tokens from each project's Cloud
 // Functions service account, so there are no secrets to set up:
-//   this project -> reportAppEvent (project-attendance-app)
-//   project-attendance-app's opticService -> opticAdmin (here)
+//   this project -> reportAppEvent (axis-optic-ce4f2)
+//   axis-optic-ce4f2's consoleService -> consoleAdmin (here)
 //
-// To plug another app into Optic, copy this file into its functions, change
+// To plug another app into Console, copy this file into its functions, change
 // the APP section (field names, settings, stats), require it from index.js,
-// and add the app to EXTERNAL_APPS in axis-team/functions/index.js and to
-// kServices in Optic (lib/services.dart).
+// and add the app to APPS in console/functions/index.js and to kServices in
+// Console (lib/services.dart).
 
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
@@ -25,17 +25,19 @@ const auth = admin.auth();
 const oidc = new OAuth2Client();
 
 const REPORT_EVENT_URL =
-  "https://us-central1-project-attendance-app.cloudfunctions.net/reportAppEvent";
-const ADMIN_URL = "https://us-central1-scorecards-app.cloudfunctions.net/opticAdmin";
+  "https://us-central1-axis-optic-ce4f2.cloudfunctions.net/reportAppEvent";
+const ADMIN_URL = "https://us-central1-scorecards-app.cloudfunctions.net/consoleAdmin";
 
-// Axis Team's Cloud Functions accounts (where Optic's opticService runs).
-const OPTIC_SERVICE_ACCOUNTS = [
-  "282213766426-compute@developer.gserviceaccount.com",
-  "project-attendance-app@appspot.gserviceaccount.com",
+// Axis Optic's Cloud Functions accounts (where Console's consoleService runs).
+// The first is "<Axis Optic's project number>-compute@developer.gserviceaccount.com"
+// (Firebase console → Project settings → Project number).
+const CONSOLE_SERVICE_ACCOUNTS = [
+  "139844049918-compute@developer.gserviceaccount.com",
+  "axis-optic-ce4f2@appspot.gserviceaccount.com",
 ];
 
 // ---------------------------------------------------------------------------
-// APP: what Optic shows and can change for a Scorecards user.
+// APP: what Console shows and can change for a Scorecards user.
 // ---------------------------------------------------------------------------
 const APP_COLOR = "#7855C1";
 
@@ -52,7 +54,7 @@ const NOTIFICATION_SETTINGS = [
   ["new_scorecard_added", "New scorecard in group"],
 ];
 
-// Premium beta: early features for accounts switched on here in Optic (right
+// Premium beta: early features for accounts switched on here in Console (right
 // now: custom templates). Stored as the sign-in claim `premiumBeta`, which
 // only this server can set; users/{uid}.premiumBeta is a copy the app
 // watches so it notices the change right away.
@@ -295,13 +297,13 @@ const actions = {
     if (Object.keys(docUpdate).length) {
       await db.collection("users").doc(uid).set(docUpdate, { merge: true });
     }
-    functions.logger.info(`Optic (${by}) updated ${uid}`, Object.keys(changes));
+    functions.logger.info(`Console (${by}) updated ${uid}`, Object.keys(changes));
     return { ok: true };
   },
 
   async userAction({ uid, id, by }) {
     if (!uid || !id) throw httpError(400, "uid and id are required");
-    functions.logger.info(`Optic (${by}) ran ${id} on ${uid}`);
+    functions.logger.info(`Console (${by}) ran ${id} on ${uid}`);
     if (id === "revoke_sessions") {
       await auth.revokeRefreshTokens(uid);
       return { message: "Signed out on every device." };
@@ -335,8 +337,8 @@ async function googleIdentityToken(audience) {
   return r.text();
 }
 
-/** Sends an alert to Optic (it decides whether to push it, per its Alerts settings). */
-async function reportToOptic(event, { title, body, data = {} }) {
+/** Sends an alert to Console (it decides whether to push it, per its Alerts settings). */
+async function reportToConsole(event, { title, body, data = {} }) {
   try {
     const token = await googleIdentityToken(REPORT_EVENT_URL);
     const res = await fetch(REPORT_EVENT_URL, {
@@ -345,16 +347,16 @@ async function reportToOptic(event, { title, body, data = {} }) {
       body: JSON.stringify({ event, title, body, data, color: APP_COLOR }),
       signal: AbortSignal.timeout(20000),
     });
-    if (!res.ok) functions.logger.warn(`Optic event ${event}: HTTP ${res.status}`, await res.text());
+    if (!res.ok) functions.logger.warn(`Console event ${event}: HTTP ${res.status}`, await res.text());
   } catch (e) {
-    functions.logger.warn(`Optic event ${event} not sent`, e);
+    functions.logger.warn(`Console event ${event} not sent`, e);
   }
 }
 
-exports.opticNewUser = functions.auth.user().onCreate(async (user) => {
+exports.consoleNewUser = functions.auth.user().onCreate(async (user) => {
   const how = user.providerData.map((p) => providerLabel(p.providerId)).join(", ");
   const who = user.displayName || user.email || "Someone";
-  await reportToOptic("new_user", {
+  await reportToConsole("new_user", {
     title: "🃏 New Scorecards user",
     body: `${who}${user.displayName && user.email ? ` (${user.email})` : ""}${how ? ` · ${how}` : ""}`,
     data: { uid: user.uid },
@@ -363,17 +365,17 @@ exports.opticNewUser = functions.auth.user().onCreate(async (user) => {
 
 // Only Axis Team's functions may call this (Cloud IAM), on top of the token
 // check below.
-exports.opticAdmin = functions.runWith({ invoker: OPTIC_SERVICE_ACCOUNTS }).https.onRequest(async (req, res) => {
+exports.consoleAdmin = functions.runWith({ invoker: CONSOLE_SERVICE_ACCOUNTS }).https.onRequest(async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
   const token = String(req.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   try {
     const ticket = await oidc.verifyIdToken({ idToken: token, audience: ADMIN_URL });
     const p = ticket.getPayload() || {};
-    if (!p.email_verified || !OPTIC_SERVICE_ACCOUNTS.includes(String(p.email).toLowerCase())) {
+    if (!p.email_verified || !CONSOLE_SERVICE_ACCOUNTS.includes(String(p.email).toLowerCase())) {
       throw new Error(`untrusted caller ${p.email || p.sub}`);
     }
   } catch (e) {
-    functions.logger.warn("opticAdmin: rejected", e.message);
+    functions.logger.warn("consoleAdmin: rejected", e.message);
     return res.status(403).json({ error: "Not allowed" });
   }
 
@@ -384,7 +386,7 @@ exports.opticAdmin = functions.runWith({ invoker: OPTIC_SERVICE_ACCOUNTS }).http
     return res.status(200).json(await handler(body));
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
-    functions.logger.error(`opticAdmin ${body.action} failed`, e);
+    functions.logger.error(`consoleAdmin ${body.action} failed`, e);
     return res.status(500).json({ error: "Something went wrong in Scorecards." });
   }
 });

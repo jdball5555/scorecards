@@ -211,13 +211,5 @@ service cloud.firestore {
 
       allow delete: if signedIn() && isGroupMember();
     }
-
-    // ---------------------------------------------------------------------
-    // Feedback copies (the real thing goes to Axis Optic). Write-only.
-    match /feedback/{feedbackId} {
-      allow create: if signedIn()
-                    && request.resource.data.uid == me()
-                    && shortText(request.resource.data.text, 20000);
-    }
   }
 }

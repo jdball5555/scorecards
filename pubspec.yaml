@@ -1,7 +1,7 @@
 name: scorecards_app
 description: "Score card and board games with friends: built-in and custom scorecards, groups and stats."
 publish_to: "none"
-version: 1.0.3+6
+version: 1.0.4+7
 
 environment:
   sdk: ^3.10.3

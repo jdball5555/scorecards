@@ -10,8 +10,8 @@ import '../auth/providers/auth_provider.dart';
 /// rulebook scan).
 ///
 /// The switch is a sign-in claim, `premiumBeta`, that only the server can set
-/// (Optic → functions/optic.js), so it can't be turned on from the app.
-/// Optic also writes `users/{uid}.premiumBeta` as a copy; when that copy
+/// (Console → functions/console.js), so it can't be turned on from the app.
+/// Console also writes `users/{uid}.premiumBeta` as a copy; when that copy
 /// changes we refresh the sign-in so the switch takes effect right away
 /// instead of within the hour. The claim is what counts, never the copy.
 final premiumBetaProvider = StreamProvider<bool>((ref) {

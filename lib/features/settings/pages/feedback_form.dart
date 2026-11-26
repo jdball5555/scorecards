@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/shared_widgets/gradient_background.dart';
 import '../../../core/shared_widgets/white_frost_tile.dart';
 import '../../../core/shared_widgets/sleek_notification_banner.dart';
-import '../../../services/optic_feedback_service.dart';
+import '../../../services/feedback_service.dart';
 import '../../../core/layout/responsive.dart';
 import 'package:scorecards_app/core/shared_widgets/top_bar_background.dart';
 import 'package:scorecards_app/features/premium/premium_beta.dart';
@@ -146,7 +146,7 @@ class _FeedbackFormScreenState extends ConsumerState<FeedbackFormScreen> {
           ? 'Scoring Template • ${_selectedTemplate.replaceAll(' (Beta)', '')}'
           : _currentLocation;
 
-      await OpticFeedbackService.submit(
+      await FeedbackService.submit(
         isBug: _feedbackType == 'bug',
         location: location,
         message: text,

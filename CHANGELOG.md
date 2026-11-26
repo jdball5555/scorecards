@@ -3,6 +3,12 @@
 All notable changes to this project are listed here, newest first.
 Versions follow [Semantic Versioning](https://semver.org): **major** for redesigns, **minor** for new features, **patch** for fixes.
 
+## [1.0.4] — 2026-11-25
+
+### Changed
+- Feedback no longer lives in Scorecards' database: the app sends it to Axis Optic, my developer project, through its `feedback` function, which checks the user's sign-in and shows them only their own tickets. The feedback collection is gone from the rules and tests
+- The admin connection for my developer app, Console, is `functions/console.js` (was `optic.js`), and it accepts calls only from Axis Optic's Google-signed service accounts, with no shared secrets
+
 ## [1.0.3] — 2026-11-25
 
 ### Changed

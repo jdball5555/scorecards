@@ -25,7 +25,7 @@ Scorecards replaces the paper score sheet. Create a group, invite your friends, 
 - **Split-screen scoring.** The scorecard and live stats side by side, on a resizable split.
 - **Axis migration.** Imports game history from my earlier Axis App.
 - **Web and mobile.** A responsive web version with a sidebar layout, alongside iOS and Android.
-- **In-app feedback.** Feedback goes straight to my Optic developer dashboard, along with the app version.
+- **In-app feedback.** Feedback goes straight to my Axis Optic inbox, along with the app version.
 
 ## Built with
 
@@ -46,14 +46,14 @@ lib/
     auth/       sign in and sign up
     groups/     game groups, invites and invite links
     home/       dashboard
-    premium/    premium beta flag for testing features (switched on from Optic)
+    premium/    premium beta flag for testing features (switched on from Console)
     scorecards/ game templates, scoring, template builder, rulebook scanner
     metrics/    per-game stats and charts
     settings/   preferences, mail inbox, feedback
   services/     Firestore and feedback services
 functions/
   index.js      scorecard and invite notifications, account lookup for invites
-  optic.js      connection to the Optic developer dashboard
+  console.js    connection to Console, my Axis Optic developer app
 firestore.rules database security rules
 firestore_tests/ tests for the security rules (Firestore emulator)
 test/           tests for templates, the rulebook parser, feedback, premium beta and stats
@@ -68,7 +68,7 @@ test/           tests for templates, the rulebook parser, feedback, premium beta
 
 ## Security
 
-The Firestore rules deny everything the app doesn't need. Personal scorecards, mail, settings and templates are private to their owner. Only members can see a group and its scorecards. Joining a group takes an invite: a pending invite from a member, or an unused invite link. Profiles can't be listed or searched; a Cloud Function finds accounts by email for invites. In-app mail can only come from someone in the same group. Premium beta is a sign-in claim that only the server can set. The rules tests in `firestore_tests/` check that the app's normal actions are allowed and that each of these is enforced.
+The Firestore rules deny everything the app doesn't need. Personal scorecards, mail, settings and templates are private to their owner. Only members can see a group and its scorecards. Joining a group takes an invite: a pending invite from a member, or an unused invite link. Profiles can't be listed or searched; a Cloud Function finds accounts by email for invites. In-app mail can only come from someone in the same group. Premium beta is a sign-in claim that only the server can set. Feedback isn't stored in Scorecards' database at all: it goes to Axis Optic's `feedback` function, which shows each user only their own tickets, and `functions/console.js` accepts calls only from Axis Optic's server. The rules tests in `firestore_tests/` check that the app's normal actions are allowed and that each of these is enforced.
 
 ## Deployment
 
@@ -83,15 +83,15 @@ This project was built with AI-assisted development. I designed the app and dire
 
 ## Axis Optic integration
 
-Scorecards connects to Axis Optic, my developer dashboard for my apps:
+Scorecards connects to Axis Optic, the Firebase project behind Console, my developer app for my apps:
 
-- In-app feedback arrives in Optic along with the app version.
-- Optic reads the website's version file, so it can show what's live.
-- **Premium beta** is a developer testing mode. I switch it on per account from Optic to try out features, and what a premium version could look like, before they're released to everyone. Custom templates are currently behind it, and the database rules only let premium beta accounts save templates.
+- In-app feedback is stored in Axis Optic, not in Scorecards' database, and arrives in Console along with the app version.
+- Console can list Scorecards users and change their settings through `functions/console.js`, which only accepts calls from Axis Optic's server.
+- **Premium beta** is a developer testing mode. I switch it on per account from Console to try out features, and what a premium version could look like, before they're released to everyone. Custom templates are currently behind it, and the database rules only let premium beta accounts save templates.
 
 ## Status
 
-**Current version: 1.0.1.** In active development. See the [changelog](CHANGELOG.md) for version history. Planned next: Apple sign-in and offline caching.
+**Current version: 1.0.4.** In active development. See the [changelog](CHANGELOG.md) for version history. Planned next: Apple sign-in and offline caching.
 
 ## License
 

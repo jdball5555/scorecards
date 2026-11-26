@@ -314,5 +314,5 @@ exports.findUserByEmail = functions.https.onCall(async (data, context) => {
   return { uid: user.uid, displayName: name };
 });
 
-// Optic developer app: new-user alerts and user admin (see optic.js).
-Object.assign(exports, require("./optic"));
+// Console (Axis Optic's developer app): new-user alerts and user admin (see console.js).
+Object.assign(exports, require("./console"));

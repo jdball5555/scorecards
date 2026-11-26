@@ -46,7 +46,6 @@ async function seed() {
     await db.doc("users/carol/mail/inv1").set({ type: "invite_received", groupId: "g1", groupName: "Family", senderUid: "alice", targetUid: "carol", status: "pending", localPlayerIdToReplace: "local_2", localPlayerNameToReplace: "Grandpa" });
     await db.doc("users/alice/mail/m1").set({ type: "system_notice", message: "hi", status: "unread" });
     await db.doc("scorecard_templates/t1").set({ creatorId: "alice", templateName: "Mine", isPublished: true });
-    await db.doc("feedback/f1").set({ uid: "alice", text: "x" });
   });
 }
 
@@ -97,7 +96,6 @@ async function main() {
   await check("premium: save template", true, () => as("alice", { premiumBeta: true }).collection("scorecard_templates").add({ creatorId: "alice", templateName: "T" }));
   await check("list my templates", true, () => alice.collection("scorecard_templates").where("creatorId", "==", "alice").get());
   await check("delete my template (not premium)", true, () => alice.doc("scorecard_templates/t1").delete());
-  await check("send feedback", true, () => alice.collection("feedback").add({ uid: "alice", email: "a", text: "Great app", type: "idea" }));
 
   // Accept a mail invite (step 1: join, step 2: take the local player's place).
   await check("accept invite: join", true, () => {
@@ -223,8 +221,7 @@ async function main() {
   await check("BLOCK create invite link for a group I'm not in", false, () => C.doc("player_invites/t9").set({ groupId: "g1", createdBy: "carol", usedBy: null }));
   await check("BLOCK save template without premium", false, () => A.collection("scorecard_templates").add({ creatorId: "alice" }));
   await check("BLOCK read someone else's template", false, () => C.doc("scorecard_templates/t1").get());
-  await check("BLOCK read feedback", false, () => A.doc("feedback/f1").get());
-  await check("BLOCK feedback as someone else", false, () => C.collection("feedback").add({ uid: "alice", text: "x" }));
+  await check("BLOCK feedback (it lives in Axis Optic)", false, () => A.collection("feedback").add({ uid: "alice", text: "x" }));
   await check("BLOCK signed-out read", false, () => env.unauthenticatedContext().firestore().doc("users/alice").get());
   await check("BLOCK signed-out write", false, () => env.unauthenticatedContext().firestore().doc("scorecards/z").set({ ownerType: "person", ownerId: "" }));
   await check("BLOCK unknown collection", false, () => A.collection("anything").add({ a: 1 }));
