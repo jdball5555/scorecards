@@ -6,7 +6,7 @@ Versions follow [Semantic Versioning](https://semver.org): **major** for redesig
 ## [1.0.5] — 2026-11-26
 
 ### Added
-- README screenshot of split-screen scoring
+- README screenshot of split-screen scoring, with all README screenshots given the same rounded corners
 
 ### Fixed
 - The website sidebar showing v1.0.3 after the 1.0.4 release
