@@ -16,6 +16,7 @@ Scorecards replaces the paper score sheet. Create a group, invite your friends, 
 
 ![Stats for one metric](docs/screenshots/stats.png)
 
+![Split-screen scoring: a Spades scorecard beside live metrics](docs/screenshots/split-screen.png)
 
 - **Built-in scorecards** for Spades, Nerts, Nines, Pit, Poker, Wavelength, Yahtzee and a standard points game, each with its own scoring rules.
 - **Custom templates.** A step-by-step builder for any game's setup questions, data entry and scoring, plus a rulebook scanner that reads rules from a photo using on-device text recognition.
@@ -91,7 +92,7 @@ Scorecards connects to Axis Optic, the Firebase project behind Console, my devel
 
 ## Status
 
-**Current version: 1.0.4.** In active development. See the [changelog](CHANGELOG.md) for version history. Planned next: Apple sign-in and offline caching.
+**Current version: 1.0.5.** In active development. See the [changelog](CHANGELOG.md) for version history. Planned next: Apple sign-in and offline caching.
 
 ## License
 

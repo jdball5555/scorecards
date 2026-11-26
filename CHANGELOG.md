@@ -3,6 +3,14 @@
 All notable changes to this project are listed here, newest first.
 Versions follow [Semantic Versioning](https://semver.org): **major** for redesigns, **minor** for new features, **patch** for fixes.
 
+## [1.0.5] — 2026-11-26
+
+### Added
+- README screenshot of split-screen scoring
+
+### Fixed
+- The website sidebar showing v1.0.3 after the 1.0.4 release
+
 ## [1.0.4] — 2026-11-25
 
 ### Changed
