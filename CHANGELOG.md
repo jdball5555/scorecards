@@ -3,6 +3,13 @@
 All notable changes to this project are listed here, newest first.
 Versions follow [Semantic Versioning](https://semver.org): **major** for redesigns, **minor** for new features, **patch** for fixes.
 
+## [1.0.6] — 2026-11-27
+
+### Fixed
+- Spades rounds with a missed nil being rejected as not adding up to 13 tricks (the nil player's tricks aren't in the hand score)
+- Spades Finalize and Add Round saying "one or more rounds" don't add up without saying which: they now name the round and show its trick count, and the round number turns red (tap it for details)
+- Spades Add Round only checking the latest round: every round has to add up now, including ones edited later
+
 ## [1.0.5] — 2026-11-26
 
 ### Added

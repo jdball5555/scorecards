@@ -51,36 +51,98 @@ class SpadesTemplate extends GameTemplate {
     return true;
   }
 
+  /// What a team's hand says about how many tricks they took, as a range:
+  /// exact when they made their bid (bid + bags), fewer than their bid when
+  /// they got set. A missed nil adds that player's tricks, which the hand
+  /// score doesn't record, so the top of the range opens up to 13.
+  ({int bid, int bags, bool set, bool missedNil, int min, int max}) _teamTricks(
+    Map<String, dynamic> round,
+    int team,
+  ) {
+    final players = team == 0 ? const [1, 2] : const [3, 4];
+    var bid = 0;
+    var missedNil = false;
+    for (final p in players) {
+      final b = (round['p${p}Bid']?.toString() ?? '').toUpperCase();
+      if (b == 'N' || b == 'NIL') {
+        if (round['p${p}NilSuccess'] == false) missedNil = true;
+      } else if (b == 'BN') {
+        if (round['p${p}BlindNilSuccess'] == false) missedNil = true;
+      } else {
+        bid += int.tryParse(b) ?? 0;
+      }
+    }
+    final hand = int.tryParse(round['t${team + 1}Hand']?.toString() ?? '') ?? 0;
+    final bags = hand.abs() % 10;
+    final set = round['t${team + 1}Set'] == true;
+    final made = bid + bags;
+    final min = set ? 0 : made;
+    final max = missedNil ? 13 : (set ? (bid - 1).clamp(0, 13) : made);
+    return (
+      bid: bid,
+      bags: bags,
+      set: set,
+      missedNil: missedNil,
+      min: min,
+      max: max,
+    );
+  }
+
   bool isRoundMathValid(Map<String, dynamic> round) {
     if (!_isRoundComplete(round)) return true;
+    final t1 = _teamTricks(round, 0);
+    final t2 = _teamTricks(round, 1);
+    // Both set: only possible if together they bid more than 13.
+    if (t1.set && t2.set) return t1.bid + t2.bid > 13;
+    return t1.min + t2.min <= 13 && t1.max + t2.max >= 13;
+  }
 
-    int getBid(String? b) {
-      if (b == 'N' || b == 'NIL' || b == 'BN') return 0;
-      return int.tryParse(b ?? '') ?? 0;
+  /// Why a finished round's tricks can't add up to 13, for showing the
+  /// player (e.g. "Round 9 adds up to 12 tricks: Alex & Sam bid 4 + 1 bag,
+  /// Jordan & Riley bid 7 + 0 bags."), or null when it's fine.
+  String? trickProblem(
+    int roundIndex,
+    List<Map<String, dynamic>> rounds,
+    List<String> playerNames,
+  ) {
+    final round = rounds[roundIndex];
+    if (isRoundMathValid(round)) return null;
+    String team(int t) {
+      final i = t * 2;
+      final names = playerNames.length > i + 1
+          ? '${playerNames[i]} & ${playerNames[i + 1]}'
+          : 'Team ${t + 1}';
+      final x = _teamTricks(round, t);
+      final what = x.set
+          ? 'got set on a bid of ${x.bid}'
+          : 'bid ${x.bid} + ${x.bags} ${x.bags == 1 ? 'bag' : 'bags'}';
+      return '$names $what${x.missedNil ? ' (missed nil)' : ''}';
     }
 
-    int t1Bid =
-        getBid(round['p1Bid']?.toString()) + getBid(round['p2Bid']?.toString());
-    int t2Bid =
-        getBid(round['p3Bid']?.toString()) + getBid(round['p4Bid']?.toString());
+    final t1 = _teamTricks(round, 0);
+    final t2 = _teamTricks(round, 1);
+    final lo = t1.min + t2.min;
+    final hi = t1.max + t2.max;
+    final count = t1.set && t2.set
+        ? "can't both be set"
+        : lo == hi
+        ? 'adds up to $lo tricks'
+        : lo > 13
+        ? 'adds up to at least $lo tricks'
+        : 'adds up to at most $hi tricks';
+    return 'Round ${roundIndex + 1} $count: ${team(0)}, ${team(1)}.';
+  }
 
-    int hand1 = int.tryParse(round['t1Hand']?.toString() ?? '') ?? 0;
-    int t1Bags = hand1.abs() % 10;
-    bool t1Set = round['t1Set'] == true;
-
-    int hand2 = int.tryParse(round['t2Hand']?.toString() ?? '') ?? 0;
-    int t2Bags = hand2.abs() % 10;
-    bool t2Set = round['t2Set'] == true;
-
-    if (!t1Set && !t2Set) {
-      return (t1Bid + t1Bags + t2Bid + t2Bags) == 13;
-    } else if (t1Set && !t2Set) {
-      return (t2Bid + t2Bags) >= (14 - t1Bid);
-    } else if (!t1Set && t2Set) {
-      return (t1Bid + t1Bags) >= (14 - t2Bid);
-    } else {
-      return (t1Bid + t2Bid) > 13;
+  /// The first round whose tricks don't add up, as a message, or null.
+  String? firstTrickProblem(
+    List<Map<String, dynamic>> rounds,
+    List<String> playerNames,
+  ) {
+    for (var i = 0; i < rounds.length; i++) {
+      final problem = trickProblem(i, rounds, playerNames);
+      if (problem != null) return problem;
     }
+    return null;
   }
 
   @override
@@ -92,7 +154,9 @@ class SpadesTemplate extends GameTemplate {
     if (rounds.isEmpty) {
       return true;
     }
-    return _isRoundComplete(rounds.last) && isRoundMathValid(rounds.last);
+    // Every round has to add up, not just the latest: an earlier one can
+    // be edited after the fact.
+    return _isRoundComplete(rounds.last) && rounds.every(isRoundMathValid);
   }
 
   bool _isBidRoundEmpty(Map<String, dynamic> round) {
@@ -468,8 +532,8 @@ class SpadesTemplate extends GameTemplate {
                     if (_isRoundComplete(rounds[roundIndex]) &&
                         !isRoundMathValid(rounds[roundIndex])) {
                       SleekNotificationBanner.show(
-                        "Invalid Scores",
-                        "The total tricks no longer equal 13. Please adjust the hands.",
+                        "Tricks Don't Add Up",
+                        "${trickProblem(roundIndex, rounds, playerNames)} You can't add a round or finalize until it does.",
                         icon: Icons.calculate,
                         color: Colors.redAccent,
                       );
@@ -846,8 +910,8 @@ class SpadesTemplate extends GameTemplate {
                               if (_isRoundComplete(rounds[roundIndex]) &&
                                   !isRoundMathValid(rounds[roundIndex])) {
                                 SleekNotificationBanner.show(
-                                  "Invalid Scores",
-                                  "The total tricks no longer equal 13. Please adjust the hands.",
+                                  "Tricks Don't Add Up",
+                                  "${trickProblem(roundIndex, rounds, playerNames)} You can't add a round or finalize until it does.",
                                   icon: Icons.calculate,
                                   color: Colors.redAccent,
                                 );
@@ -934,8 +998,8 @@ class SpadesTemplate extends GameTemplate {
                       if (_isRoundComplete(rounds[roundIndex]) &&
                           !isRoundMathValid(rounds[roundIndex])) {
                         SleekNotificationBanner.show(
-                          "Invalid Scores",
-                          "The total tricks no longer equal 13. Please adjust the hands.",
+                          "Tricks Don't Add Up",
+                          "${trickProblem(roundIndex, rounds, playerNames)} You can't add a round or finalize until it does.",
                           icon: Icons.calculate,
                           color: Colors.redAccent,
                         );
@@ -1329,8 +1393,8 @@ class SpadesTemplate extends GameTemplate {
                     if (_isRoundComplete(rounds[roundIndex]) &&
                         !isRoundMathValid(rounds[roundIndex])) {
                       SleekNotificationBanner.show(
-                        "Invalid Hand Scores",
-                        "The total tricks don't add up to exactly 13. Please check your bags and sets. You cannot add a round until this is resolved.",
+                        "Tricks Don't Add Up",
+                        "${trickProblem(roundIndex, rounds, playerNames)} You can't add a round or finalize until it does.",
                         icon: Icons.calculate,
                         color: Colors.redAccent,
                       );
@@ -1482,12 +1546,7 @@ class SpadesTemplate extends GameTemplate {
       rows.add(
         TableRow(
           children: [
-            _buildCell(
-              "${r + 1}",
-              isBold: true,
-              color: Colors.white54,
-              isCrowded: isCrowded,
-            ),
+            _buildRoundNumberCell(r, rounds, playerNames, isCrowded),
             _buildBidCell(
               context,
               r,
@@ -1669,6 +1728,64 @@ class SpadesTemplate extends GameTemplate {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 4.0),
         child: cellContent,
+      ),
+    );
+  }
+
+  /// The round number, in red with a warning icon when the round's tricks
+  /// don't add up to 13. Tapping it says why.
+  Widget _buildRoundNumberCell(
+    int r,
+    List<Map<String, dynamic>> rounds,
+    List<String> playerNames,
+    bool isCrowded,
+  ) {
+    final problem = trickProblem(r, rounds, playerNames);
+    if (problem == null) {
+      return _buildCell(
+        "${r + 1}",
+        isBold: true,
+        color: Colors.white54,
+        isCrowded: isCrowded,
+      );
+    }
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => SleekNotificationBanner.show(
+        "Tricks Don't Add Up",
+        "$problem Fix the bids or hand scores.",
+        icon: Icons.calculate,
+        color: Colors.redAccent,
+      ),
+      child: Tooltip(
+        message: problem,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 4.0),
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    "${r + 1}",
+                    style: TextStyle(
+                      color: Colors.redAccent,
+                      fontWeight: FontWeight.bold,
+                      fontSize: _getDynamicFontSize(isCrowded) + 2,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.redAccent,
+                    size: 14,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -457,11 +457,11 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
     )) {
       if (_template is SpadesTemplate && _rounds.isNotEmpty) {
         final spades = _template as SpadesTemplate;
-        bool hasInvalidMath = _rounds.any((r) => !spades.isRoundMathValid(r));
-        if (hasInvalidMath) {
+        final problem = spades.firstTrickProblem(_rounds, _playerNames);
+        if (problem != null) {
           SleekNotificationBanner.show(
-            "Invalid Hand Scores",
-            "One or more rounds have tricks that don't add up to exactly 13. Please fix them before finalizing.",
+            "Tricks Don't Add Up",
+            "$problem Fix it (marked in red) before finalizing.",
             icon: Icons.calculate,
             color: Colors.redAccent,
           );
@@ -1330,12 +1330,15 @@ class _ScoringScreenState extends ConsumerState<ScoringScreen> {
                                             _rounds.isNotEmpty) {
                                           final spades =
                                               _template as SpadesTemplate;
-                                          if (!spades.isRoundMathValid(
-                                            _rounds.last,
-                                          )) {
+                                          final problem = spades
+                                              .firstTrickProblem(
+                                                _rounds,
+                                                _playerNames,
+                                              );
+                                          if (problem != null) {
                                             SleekNotificationBanner.show(
-                                              "Invalid Hand Scores",
-                                              "The total tricks don't add up to exactly 13. Please check your bags and sets before adding a round.",
+                                              "Tricks Don't Add Up",
+                                              "$problem Fix it (marked in red) before adding a round.",
                                               icon: Icons.calculate,
                                               color: Colors.redAccent,
                                             );

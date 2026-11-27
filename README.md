@@ -92,7 +92,7 @@ Scorecards connects to Axis Optic, the Firebase project behind Console, my devel
 
 ## Status
 
-**Current version: 1.0.5.** In active development. See the [changelog](CHANGELOG.md) for version history. Planned next: Apple sign-in and offline caching.
+**Current version: 1.0.6.** In active development. See the [changelog](CHANGELOG.md) for version history. Planned next: Apple sign-in and offline caching.
 
 ## License
 
